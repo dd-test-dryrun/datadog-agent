@@ -311,7 +311,7 @@ read), and tailing mode for each log file.
 
 ### [comp/logs/health](https://pkg.go.dev/github.com/DataDog/datadog-agent/comp/logs/health)
 
-Package health provides the definition of the health component
+Package health provides a dependency-injectible health object for kubernetes liveness checks
 
 ### [comp/logs/integrations](https://pkg.go.dev/github.com/DataDog/datadog-agent/comp/logs/integrations)
 
