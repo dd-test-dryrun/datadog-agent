@@ -2,6 +2,10 @@
 #define __REDIS_DECODING_H
 
 #include "protocols/redis/decoding-maps.h"
+#include "protocols/helpers/pktbuf.h"
+
+#define BLK_SIZE (16)
+PKTBUF_READ_INTO_BUFFER(redis_bulk, MAX_KEY_LEN, BLK_SIZE)
 
 // Read a CRLF terminator from the packet buffer. The terminator is expected to be in the format: \r\n.
 // The function returns true if the terminator was successfully read, or false if the terminator could not be read.
@@ -13,7 +17,6 @@ static __always_inline bool read_crlf(pktbuf_t pkt) {
     pktbuf_advance(pkt, RESP_FIELD_TERMINATOR_LEN);
     return terminator[0] == RESP_TERMINATOR_1 && terminator[1] == RESP_TERMINATOR_2;
 }
-
 
 // Read an array message from the packet buffer. The array message is expected to be in the format:
 // *<param_count>\r\n<param1>\r\n<param2>\r\n...
@@ -46,63 +49,77 @@ static __always_inline u32 read_array_message(pktbuf_t pkt) {
     return param_count - '0';
 }
 
-// Read a bulk string from the packet buffer. The bulk string is expected to be in the format:
-// $<key_len>\r\n<key>\r\n
-// where <key_len> is the length of the key in bytes, and <key> is the key itself.
-// The key is stored in the provided buffer, and the function returns true if the key was successfully read.
-// The function returns false if the key could not be read, or if the key length is invalid.
-// The function also returns false if the key length is greater than the provided buffer length.
-static __always_inline bool read_bulk_string(pktbuf_t pkt, char *buf, u32 buf_len, u16 *out_key_len, bool *truncated) {
+static __always_inline u16 get_key_len(pktbuf_t pkt) {
+    u32 current_offset = pktbuf_data_offset(pkt);
+    const u32 data_end = pktbuf_data_end(pkt);
+
     char bulk_prefix;
-    if (pktbuf_load_bytes_from_current_offset(pkt, &bulk_prefix, sizeof(bulk_prefix)) < 0 || bulk_prefix != RESP_BULK_PREFIX) {
-        return false;
+    // Verify we can read the RESP bulk prefix.
+    if (current_offset + sizeof(bulk_prefix) > data_end) {
+        return 0;
     }
-    pktbuf_advance(pkt, sizeof(bulk_prefix));
+    if (pktbuf_load_bytes(pkt, current_offset, &bulk_prefix, sizeof(bulk_prefix)) < 0 || bulk_prefix != RESP_BULK_PREFIX) {
+        return 0;
+    }
+    current_offset++;
 
     // Read key length (up to 3 digits)
-    s32 key_size = 0;
-    char key_len;
+    char key_size_bytes[3] = {};
+    if (current_offset + sizeof(key_size_bytes) > data_end) {
+        return 0;
+    }
+    if (pktbuf_load_bytes(pkt, current_offset, key_size_bytes, sizeof(key_size_bytes)) < 0) {
+        return 0;
+    }
+
+    u16 key_size = 0;
+    u32 digits_read = 0;
+    // The key length is a decimal number, so we need to convert it from ASCII to an integer.
     #pragma unroll (3)
     for (int i = 0; i < 3; i++) {
-        if (pktbuf_load_bytes_from_current_offset(pkt, &key_len, sizeof(key_len)) < 0 || key_len == RESP_TERMINATOR_1) {
+        if (key_size_bytes[i] == RESP_TERMINATOR_1) {
             break;
         }
-        if (key_len < '0' || key_len > '9') {
-            return false;
+        if (key_size_bytes[i] < '0' || key_size_bytes[i] > '9') {
+            return 0;
         }
-        key_size = key_size * 10 + (key_len - '0');
-        pktbuf_advance(pkt, sizeof(key_len));
+        key_size = key_size * 10 + (key_size_bytes[i] - '0');
+        digits_read++;
     }
-    // Ensure key_size is always positive and within a valid range
-    // We support up to 999 characters in the key length, hence the mask is 2^10 - 1 = 1023 = 0x3FF.
-    key_size &= 0x3FF;
 
+    // Advance past the digits we read
+    current_offset += digits_read;
+    pktbuf_set_offset(pkt, current_offset);
+
+    if (!read_crlf(pkt)) {
+        return 0;
+    }
+
+    if (key_size <= 0 || key_size > 999) {
+        return 0;
+    }
+
+    return key_size;
+}
+
+static __always_inline bool read_key_name(pktbuf_t pkt, char *buf, u8 buf_len, u16 *out_key_len, bool *truncated) {
+    const u32 key_size = *out_key_len > MAX_KEY_LEN - 1 ? MAX_KEY_LEN - 1 : *out_key_len;
+    const u32 final_key_size = key_size > buf_len ? buf_len : key_size;
+    if (final_key_size == 0) {
+        return false;
+    }
+
+    pktbuf_read_into_buffer_redis_bulk(buf, pkt, pktbuf_data_offset(pkt));
+    pktbuf_advance(pkt, *out_key_len);
+    
+    // Read and skip past the CRLF after the key data
     if (!read_crlf(pkt)) {
         return false;
     }
 
-    const s32 original_key_size = key_size;
-    key_size &= 0xFF;
-    if (key_size > MAX_KEY_LEN - 1) {
-        key_size = MAX_KEY_LEN - 1;
-    }
-
-    if (key_size > buf_len) {
-        key_size = buf_len;
-    }
-
-    if (key_size > 0) {
-        long ret = pktbuf_load_bytes_from_current_offset(pkt, buf, key_size);
-        if (ret < 0) {
-            return false;
-        }
-        pktbuf_advance(pkt, original_key_size);
-        *out_key_len = key_size;
-        *truncated = key_size < original_key_size;
-    } else {
-        return false;
-    }
-    return read_crlf(pkt);
+    *truncated = final_key_size < *out_key_len;
+    *out_key_len = final_key_size;
+    return true;
 }
 
 // Process a Redis request from the packet buffer. The function reads the request from the packet buffer,
@@ -117,10 +134,19 @@ static __always_inline void process_redis_request(pktbuf_t pkt, conn_tuple_t *co
         return;
     }
 
+    const u16 method_len = get_key_len(pkt);
     char method[METHOD_LEN + 1] = {};
-    __u16 key_len = 0;
-    bool truncated = false;
-    if (!read_bulk_string(pkt, method, METHOD_LEN, &key_len, &truncated)) {
+    if (method_len <= 0 || method_len > METHOD_LEN) {
+        return;
+    }
+    
+    if (pktbuf_load_bytes_from_current_offset(pkt, method, METHOD_LEN) < 0) {
+        return;
+    }
+    pktbuf_advance(pkt, method_len);
+    
+    // Read CRLF after method
+    if (!read_crlf(pkt)) {
         return;
     }
 
@@ -134,7 +160,13 @@ static __always_inline void process_redis_request(pktbuf_t pkt, conn_tuple_t *co
         return;
     }
 
-    if (!read_bulk_string(pkt, transaction.buf, sizeof(transaction.buf), &transaction.buf_len, &transaction.truncated)) {
+    // Now read the key length
+    transaction.buf_len = get_key_len(pkt);
+    if (transaction.buf_len == 0) {
+        return;
+    }
+
+    if (!read_key_name(pkt, transaction.buf, sizeof(transaction.buf), &transaction.buf_len, &transaction.truncated)) {
         return;
     }
 
