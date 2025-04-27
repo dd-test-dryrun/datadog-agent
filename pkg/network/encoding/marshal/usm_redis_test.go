@@ -84,12 +84,12 @@ func (s *RedisSuite) TestFormatRedisStats() {
 						Command:   model.RedisCommand(int32(dummyKey.Command)),
 						KeyName:   dummyKey.KeyName,
 						Truncated: dummyKey.Truncated,
-						ErrorToStats: map[bool]*model.RedisStatsEntry{
-							false: {
+						ErrorToStats: map[int32]*model.RedisStatsEntry{
+							0: {
 								FirstLatencySample: in.Redis[dummyKey].ErrorToStats[false].FirstLatencySample,
 								Count:              uint32(in.Redis[dummyKey].ErrorToStats[false].Count),
 							},
-							true: {
+							1: {
 								FirstLatencySample: in.Redis[dummyKey].ErrorToStats[false].FirstLatencySample,
 								Count:              uint32(in.Redis[dummyKey].ErrorToStats[false].Count),
 							},
@@ -154,7 +154,7 @@ func (s *RedisSuite) TestRedisIDCollisionRegression() {
 	t.Cleanup(encoder.Close)
 	aggregations := getRedisAggregations(t, encoder, in.Conns[0])
 	assert.NotNil(aggregations)
-	assert.Equal(10, int(aggregations.Aggregations[0].GetRedis().ErrorToStats[false].Count))
+	assert.Equal(10, int(aggregations.Aggregations[0].GetRedis().ErrorToStats[0].Count))
 
 	// assert that the other connections sharing the same (source,destination)
 	// addresses but different PIDs *won't* be associated with the Redis stats
@@ -215,7 +215,7 @@ func (s *RedisSuite) TestRedisLocalhostScenario() {
 	for _, conn := range in.Conns {
 		aggregations := getRedisAggregations(t, encoder, conn)
 		assert.NotNil(aggregations.Aggregations[0].GetRedis())
-		assert.Equal(10, int(aggregations.Aggregations[0].GetRedis().ErrorToStats[false].Count))
+		assert.Equal(10, int(aggregations.Aggregations[0].GetRedis().ErrorToStats[0].Count))
 	}
 }
 

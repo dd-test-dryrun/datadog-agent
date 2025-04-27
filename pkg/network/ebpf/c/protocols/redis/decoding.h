@@ -22,7 +22,7 @@ static __always_inline bool read_crlf(pktbuf_t pkt) {
 // *<param_count>\r\n<param1>\r\n<param2>\r\n...
 // where <param_count> is the number of parameters in the array, and <param1>, <param2>, etc. are the parameters themselves.
 // The function returns the number of parameters in the array, or 0 if the array message could not be read.
-static __always_inline u32 read_array_message(pktbuf_t pkt) {
+static __always_inline u32 read_array_message_param_count(pktbuf_t pkt) {
     // Verify RESP array prefix
     char first_byte;
     if (pktbuf_load_bytes_from_current_offset(pkt, &first_byte, sizeof(first_byte)) < 0 || first_byte != RESP_ARRAY_PREFIX) {
@@ -109,9 +109,11 @@ static __always_inline bool read_key_name(pktbuf_t pkt, char *buf, u8 buf_len, u
         return false;
     }
 
+    // Read possibly more than out_key_len
     pktbuf_read_into_buffer_redis_bulk(buf, pkt, pktbuf_data_offset(pkt));
+    // Advance by out_key_len since the remainder is not part of the key name
     pktbuf_advance(pkt, *out_key_len);
-    
+
     // Read and skip past the CRLF after the key data
     if (!read_crlf(pkt)) {
         return false;
@@ -125,7 +127,7 @@ static __always_inline bool read_key_name(pktbuf_t pkt, char *buf, u8 buf_len, u
 // Process a Redis request from the packet buffer. The function reads the request from the packet buffer,
 // and returns the method (GET or SET) and the key(up to MAX_KEY_LEN bytes).
 static __always_inline void process_redis_request(pktbuf_t pkt, conn_tuple_t *conn_tuple) {
-    u32 param_count = read_array_message(pkt);
+    u32 param_count = read_array_message_param_count(pkt);
     if (param_count == 0) {
         return;
     }
@@ -134,17 +136,19 @@ static __always_inline void process_redis_request(pktbuf_t pkt, conn_tuple_t *co
         return;
     }
 
+    // Read method
     const u16 method_len = get_key_len(pkt);
     char method[METHOD_LEN + 1] = {};
-    if (method_len <= 0 || method_len > METHOD_LEN) {
+    // We only support GET and SET commands for now, both with length 3.
+    if (method_len != METHOD_LEN) {
         return;
     }
-    
+
     if (pktbuf_load_bytes_from_current_offset(pkt, method, METHOD_LEN) < 0) {
         return;
     }
-    pktbuf_advance(pkt, method_len);
-    
+    pktbuf_advance(pkt, METHOD_LEN);
+
     // Read CRLF after method
     if (!read_crlf(pkt)) {
         return;
@@ -160,7 +164,7 @@ static __always_inline void process_redis_request(pktbuf_t pkt, conn_tuple_t *co
         return;
     }
 
-    // Now read the key length
+    // Read key name
     transaction.buf_len = get_key_len(pkt);
     if (transaction.buf_len == 0) {
         return;

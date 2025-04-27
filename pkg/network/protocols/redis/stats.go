@@ -104,13 +104,13 @@ func (r *RequestStats) mergeRequests(isErr bool, newStats *RequestStat) {
 		if stats.FirstLatencySample != 0 {
 			err := stats.Latencies.AddWithCount(stats.FirstLatencySample, float64(stats.Count))
 			if err != nil {
-				log.Debugf("could not add kafka request latency to ddsketch: %v", err)
+				log.Debugf("could not add redis request latency to ddsketch: %v", err)
 			}
 		}
 	} else {
 		err := stats.Latencies.MergeWith(newStats.Latencies)
 		if err != nil {
-			log.Debugf("error merging kafka transactions: %v", err)
+			log.Debugf("error merging redis transactions: %v", err)
 		}
 	}
 	stats.Count += newStats.Count

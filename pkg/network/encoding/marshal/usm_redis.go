@@ -77,7 +77,11 @@ func (e *redisEncoder) encodeData(connectionData *USMConnectionData[redis.Key, *
 					}
 					staticTags |= stats.StaticTags
 					aggregationBuilder.AddErrorToStats(func(errorToStatsBuilder *model.RedisStats_ErrorToStatsEntryBuilder) {
-						errorToStatsBuilder.SetKey(isErr)
+						if !isErr {
+							errorToStatsBuilder.SetKey(int32(model.RedisErrorType_RedisNoError))
+						} else {
+							errorToStatsBuilder.SetKey(int32(model.RedisErrorType_RedisErrorTypeUnknown))
+						}
 						errorToStatsBuilder.SetValue(func(statsBuilder *model.RedisStatsEntryBuilder) {
 							statsBuilder.SetCount(uint32(stats.Count))
 							if latencies := stats.Latencies; latencies != nil {
