@@ -783,14 +783,20 @@ func (s *baseStartStopSuite) sendHostMemoryMetrics(host *components.RemoteHost) 
 	}
 }
 
-// captureLiveKernelDump sends a commnad to the host to create a live kernel dump.
+// captureLiveKernelDump sends a command to the host to create a live kernel dump and downloads it.
 func (s *baseStartStopSuite) captureLiveKernelDump(host *components.RemoteHost, dumpDir string) {
 	tempDumpDir := `C:\Windows\Temp`
 	sourceDumpDir := filepath.Join(tempDumpDir, `localhost`)
 
 	// The live kernel dump will be placed under subdirectory named "localhost."
 	// Make sure the subdirectory where the dump will be generated is empty.
-	host.RemoveAll(sourceDumpDir)
+	if exists, _ := host.FileExists(sourceDumpDir); exists {
+		err := host.RemoveAll(sourceDumpDir)
+		if err != nil {
+			s.T().Logf("failed to cleanup %s: %s\n", sourceDumpDir, err)
+			return
+		}
+	}
 
 	// This Powershell command is originally tailored for storage cluster environments.
 	getSubsystemCmd := `$ss = Get-CimInstance -ClassName MSFT_StorageSubSystem -Namespace Root\Microsoft\Windows\Storage`
@@ -805,7 +811,7 @@ func (s *baseStartStopSuite) captureLiveKernelDump(host *components.RemoteHost, 
 	}
 
 	if err != nil {
-		s.T().Logf("Remote execute error: %s\n", err)
+		s.T().Logf("remote execute error: %s\n", err)
 		return
 	}
 
@@ -820,9 +826,9 @@ func (s *baseStartStopSuite) captureLiveKernelDump(host *components.RemoteHost, 
 	destDumpFile := filepath.Join(dumpDir, `LiveDump.dmp`)
 	err = host.GetFile(sourceDumpFile, destDumpFile)
 	if err != nil {
-		s.T().Logf("failed to download live kernel dump to %s: %s", destDumpFile, err)
+		s.T().Logf("failed to download live kernel dump to %s: %s\n", destDumpFile, err)
 	} else {
-		s.T().Logf("live kernel dump downloaded to %s", destDumpFile)
+		s.T().Logf("live kernel dump downloaded to %s\n", destDumpFile)
 	}
 
 	// Cleanup the "localhost" subdirectory.
