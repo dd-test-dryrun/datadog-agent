@@ -7,11 +7,11 @@
 package debugging
 
 import (
+	model "github.com/DataDog/agent-payload/v5/process"
+
 	"github.com/DataDog/datadog-agent/pkg/network/protocols"
 	"github.com/DataDog/datadog-agent/pkg/network/protocols/redis"
 	"github.com/DataDog/datadog-agent/pkg/process/util"
-
-	model "github.com/DataDog/agent-payload/v5/process"
 )
 
 // address represents represents a IP:Port

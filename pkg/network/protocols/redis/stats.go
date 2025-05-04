@@ -8,12 +8,11 @@ package redis
 import (
 	"errors"
 
-	"github.com/DataDog/datadog-agent/pkg/network/protocols"
-	"github.com/DataDog/datadog-agent/pkg/process/util"
-
 	"github.com/DataDog/sketches-go/ddsketch"
 
+	"github.com/DataDog/datadog-agent/pkg/network/protocols"
 	"github.com/DataDog/datadog-agent/pkg/network/types"
+	"github.com/DataDog/datadog-agent/pkg/process/util"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 )
 
@@ -89,6 +88,7 @@ func (r *RequestStats) CombineWith(newStats *RequestStats) {
 	}
 }
 
+// mergeRequests adds a RequestStat to the given RequestStats. Only called when newStats has Latencies.
 func (r *RequestStats) mergeRequests(isErr bool, newStats *RequestStat) {
 	stats, exists := r.ErrorToStats[isErr]
 	if !exists {

@@ -4,8 +4,7 @@
 #include "protocols/redis/decoding-maps.h"
 #include "protocols/helpers/pktbuf.h"
 
-#define BLK_SIZE (16)
-PKTBUF_READ_INTO_BUFFER(redis_bulk, MAX_KEY_LEN, BLK_SIZE)
+PKTBUF_READ_INTO_BUFFER(redis_bulk, MAX_KEY_LEN, READ_KEY_CHUNK_SIZE)
 
 // Read a CRLF terminator from the packet buffer. The terminator is expected to be in the format: \r\n.
 // The function returns true if the terminator was successfully read, or false if the terminator could not be read.
@@ -49,6 +48,8 @@ static __always_inline u32 read_array_message_param_count(pktbuf_t pkt) {
     return param_count - '0';
 }
 
+// Extracts and returns the length of a Redis key from a RESP bulk string.
+// Validates the format and returns 0 if invalid or exceeds maximum length.
 static __always_inline u16 get_key_len(pktbuf_t pkt) {
     u32 current_offset = pktbuf_data_offset(pkt);
     const u32 data_end = pktbuf_data_end(pkt);
@@ -63,8 +64,8 @@ static __always_inline u16 get_key_len(pktbuf_t pkt) {
     }
     current_offset++;
 
-    // Read key length (up to 3 digits)
-    char key_size_bytes[3] = {};
+    // Read key length (up to MAX_DIGITS_KEY_LEN_PREFIX digits)
+    char key_size_bytes[MAX_DIGITS_KEY_LEN_PREFIX] = {};
     if (current_offset + sizeof(key_size_bytes) > data_end) {
         return 0;
     }
@@ -75,8 +76,8 @@ static __always_inline u16 get_key_len(pktbuf_t pkt) {
     u16 key_size = 0;
     u32 digits_read = 0;
     // The key length is a decimal number, so we need to convert it from ASCII to an integer.
-    #pragma unroll (3)
-    for (int i = 0; i < 3; i++) {
+    #pragma unroll (MAX_DIGITS_KEY_LEN_PREFIX)
+    for (int i = 0; i < MAX_DIGITS_KEY_LEN_PREFIX; i++) {
         if (key_size_bytes[i] == RESP_TERMINATOR_1) {
             break;
         }
@@ -95,13 +96,15 @@ static __always_inline u16 get_key_len(pktbuf_t pkt) {
         return 0;
     }
 
-    if (key_size <= 0 || key_size > 999) {
+    if (key_size <= 0 || key_size > MAX_READABLE_KEY_LEN) {
         return 0;
     }
 
     return key_size;
 }
 
+// Reads a Redis key name into the provided buffer with length validation.
+// Sets truncated flag if key was too long for buffer, and out_key_len as the key size after clamping.
 static __always_inline bool read_key_name(pktbuf_t pkt, char *buf, u8 buf_len, u16 *out_key_len, bool *truncated) {
     const u32 key_size = *out_key_len > MAX_KEY_LEN - 1 ? MAX_KEY_LEN - 1 : *out_key_len;
     const u32 final_key_size = key_size > buf_len ? buf_len : key_size;
@@ -124,15 +127,16 @@ static __always_inline bool read_key_name(pktbuf_t pkt, char *buf, u8 buf_len, u
     return true;
 }
 
-// Process a Redis request from the packet buffer. The function reads the request from the packet buffer,
-// and returns the method (GET or SET) and the key(up to MAX_KEY_LEN bytes).
+
+// Processes incoming Redis requests (GET or SET commands).
+// Extracts command type and key (up to MAX_KEY_LEN bytes), stores transaction info in redis_in_flight map.
 static __always_inline void process_redis_request(pktbuf_t pkt, conn_tuple_t *conn_tuple) {
     u32 param_count = read_array_message_param_count(pkt);
     if (param_count == 0) {
         return;
     }
     // GET message has 2 parameters, SET message has 3-5 parameters. Anything else is irrelevant for us.
-    if (param_count < 2 || param_count > 5) {
+    if (param_count < MIN_PARAM_COUNT || param_count > MAX_PARAM_COUNT) {
         return;
     }
 
@@ -174,10 +178,12 @@ static __always_inline void process_redis_request(pktbuf_t pkt, conn_tuple_t *co
         return;
     }
 
-    bpf_map_update_elem(&redis_in_flight, conn_tuple, &transaction, BPF_ANY);
+    bpf_map_update_with_telemetry(redis_in_flight, conn_tuple, &transaction, BPF_ANY);
 }
 
-// Handles a TCP termination event by deleting the connection tuple from the in-flight map.
+
+// Handles TCP connection termination by cleaning up in-flight transactions.
+// Removes entries from redis_in_flight map for both directions.
 static void __always_inline redis_tcp_termination(conn_tuple_t *tup) {
     bpf_map_delete_elem(&redis_in_flight, tup);
     flip_tuple(tup);
@@ -198,6 +204,8 @@ static __always_inline void redis_batch_enqueue_wrapper(conn_tuple_t *tuple, red
     redis_batch_enqueue(event);
 }
 
+// Processes Redis response messages and validates their format.
+// Handles error responses and command-specific response types.
 static void __always_inline process_redis_response(pktbuf_t pkt, conn_tuple_t *tup, redis_transaction_t *transaction) {
     char first_byte;
     if (pktbuf_load_bytes_from_current_offset(pkt, &first_byte, sizeof(first_byte)) < 0) {
@@ -207,16 +215,12 @@ static void __always_inline process_redis_response(pktbuf_t pkt, conn_tuple_t *t
         transaction->is_error = true;
         goto enqueue;
     }
-    if (transaction->command == REDIS_GET) {
-        if (first_byte != RESP_BULK_PREFIX) {
-            goto cleanup;
-        }
+    if (transaction->command == REDIS_GET && first_byte == RESP_BULK_PREFIX) {
         goto enqueue;
-    } else{
-        if (first_byte != RESP_SIMPLE_STRING_PREFIX) {
-            goto cleanup;
-        }
+    } else if (transaction->command == REDIS_SET && first_byte == RESP_SIMPLE_STRING_PREFIX){
         goto enqueue;
+    } else {
+        goto cleanup;
     }
 
 enqueue:
@@ -226,6 +230,8 @@ cleanup:
     bpf_map_delete_elem(&redis_in_flight, tup);
 }
 
+// Main socket processing function for Redis traffic.
+// Handles both requests and responses based on connection state.
 SEC("socket/redis_process")
 int socket__redis_process(struct __sk_buff *skb) {
     skb_info_t skb_info = {};
@@ -251,6 +257,8 @@ int socket__redis_process(struct __sk_buff *skb) {
     return 0;
 }
 
+// Processes Redis messages over TLS connections.
+// Similar to socket__redis_process but handles TLS-encrypted traffic.
 SEC("uprobe/redis_tls_process")
 int uprobe__redis_tls_process(struct pt_regs *ctx) {
     const __u32 zero = 0;
@@ -262,6 +270,7 @@ int uprobe__redis_tls_process(struct pt_regs *ctx) {
 
     // Copying the tuple to the stack to handle verifier issues on kernel 4.14.
     conn_tuple_t tup = args->tup;
+    normalize_tuple(&tup);
 
     pktbuf_t pkt = pktbuf_from_tls(ctx, args);
     redis_transaction_t *transaction = bpf_map_lookup_elem(&redis_in_flight, &tup);
@@ -273,6 +282,8 @@ int uprobe__redis_tls_process(struct pt_regs *ctx) {
     return 0;
 }
 
+// Handles termination of TLS Redis connections.
+// Cleans up connection state for TLS connections.
 SEC("uprobe/redis_tls_termination")
 int uprobe__redis_tls_termination(struct pt_regs *ctx) {
     const __u32 zero = 0;
@@ -284,6 +295,7 @@ int uprobe__redis_tls_termination(struct pt_regs *ctx) {
 
     // Copying the tuple to the stack to handle verifier issues on kernel 4.14.
     conn_tuple_t tup = args->tup;
+    normalize_tuple(&tup);
     redis_tcp_termination(&tup);
 
     return 0;
