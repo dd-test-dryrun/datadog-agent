@@ -101,8 +101,8 @@ func (r *RequestStats) mergeRequests(isErr bool, newStats *RequestStat) {
 		stats.Latencies = newStats.Latencies.Copy()
 
 		// If we have a latency sample in this bucket we now add it to the DDSketch
-		if stats.FirstLatencySample != 0 {
-			err := stats.Latencies.AddWithCount(stats.FirstLatencySample, float64(stats.Count))
+		if stats.Count == 1 {
+			err := stats.Latencies.Add(stats.FirstLatencySample)
 			if err != nil {
 				log.Debugf("could not add redis request latency to ddsketch: %v", err)
 			}
