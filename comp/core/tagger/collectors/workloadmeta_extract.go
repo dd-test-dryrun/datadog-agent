@@ -678,9 +678,9 @@ func (c *WorkloadMetaCollector) extractTagsFromPodInstrumentationTarget(pod *wor
 			continue
 		}
 
-		value, extracted, err := tc.ExtractSingleValueFromPodMeta(pod.Annotations, pod.Labels)
+		value, extracted, err := extractSingleValueFromPodMeta(pod, tc)
 		if err != nil {
-			log.Warn("Error parsing value workload data from pod metadata for env %s: %s", tc.Name, err)
+			log.Warnf("Error parsing value workload data from pod metadata for env %s: %s", tc.Name, err)
 		} else if extracted {
 			tagList.AddStandard(tag, value)
 		}
