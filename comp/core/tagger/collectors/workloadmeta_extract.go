@@ -22,6 +22,8 @@ import (
 	pkgconfigsetup "github.com/DataDog/datadog-agent/pkg/config/setup"
 	"github.com/DataDog/datadog-agent/pkg/util/kubernetes"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
+
+	"github.com/DataDog/datadog-agent/pkg/apm/instrumentation"
 )
 
 const (
@@ -339,6 +341,7 @@ func (c *WorkloadMetaCollector) extractTagsFromPodEntity(pod *workloadmeta.Kuber
 	tagList.AddLow(tags.KubeRuntimeClass, pod.RuntimeClass)
 
 	c.extractTagsFromPodLabels(pod, tagList)
+	c.extractTagsFromPodInstrumentationTarget(pod, tagList)
 
 	// pod labels as tags
 	for name, value := range pod.Labels {
@@ -428,9 +431,9 @@ func (c *WorkloadMetaCollector) extractTagsFromPodEntity(pod *workloadmeta.Kuber
 func (c *WorkloadMetaCollector) handleKubePod(ev workloadmeta.Event) []*types.TagInfo {
 	pod := ev.Entity.(*workloadmeta.KubernetesPod)
 	tagList := taglist.NewTagList()
-	tagInfos := []*types.TagInfo{c.extractTagsFromPodEntity(pod, tagList)}
-
-	c.extractTagsFromPodLabels(pod, tagList)
+	tagInfos := []*types.TagInfo{
+		c.extractTagsFromPodEntity(pod, tagList),
+	}
 
 	for _, podContainer := range pod.GetAllContainers() {
 		cTagInfo, err := c.extractTagsFromPodContainer(pod, podContainer, tagList.Copy())
@@ -646,6 +649,42 @@ func (c *WorkloadMetaCollector) handleGPU(ev workloadmeta.Event) []*types.TagInf
 	}
 
 	return tagInfos
+}
+
+func (c *WorkloadMetaCollector) extractTagsFromPodInstrumentationTarget(pod *workloadmeta.KubernetesPod, tagList *taglist.TagList) {
+	targetJSON, ok := pod.Annotations[instrumentation.AppliedTargetAnnotation]
+	if !ok {
+		return
+	}
+
+	var target instrumentation.Target
+	if err := json.NewDecoder(strings.NewReader(targetJSON)).Decode(&target); err != nil {
+		log.Warnf("error parsing instrumentation target JSON: %s", err)
+		return
+	}
+
+	for _, tc := range target.TracerConfigs {
+		var tag string
+		switch tc.Name {
+		case kubernetes.ServiceTagEnvVar:
+			tag = tags.Service
+		case kubernetes.EnvTagEnvVar:
+			tag = tags.Env
+		case kubernetes.VersionTagEnvVar:
+			tag = tags.Version
+		}
+
+		if tag == "" {
+			continue
+		}
+
+		value, extracted, err := tc.ExtractSingleValueFromPodMeta(pod.Annotations, pod.Labels)
+		if err != nil {
+			log.Warn("Error parsing value workload data from pod metadata for env %s: %s", tc.Name, err)
+		} else if extracted {
+			tagList.AddStandard(tag, value)
+		}
+	}
 }
 
 func (c *WorkloadMetaCollector) extractTagsFromPodLabels(pod *workloadmeta.KubernetesPod, tagList *taglist.TagList) {
@@ -907,4 +946,66 @@ func parseContainerADTagsLabels(tags *taglist.TagList, labelValue string) {
 		}
 		tags.AddHigh(tagParts[0], tagParts[1])
 	}
+}
+
+// splitMaybeSubscriptedPath checks whether the specified fieldPath is
+// subscripted, and
+//   - if yes, this function splits the fieldPath into path and subscript, and
+//     returns (path, subscript, true).
+//   - if no, this function returns (fieldPath, "", false).
+//
+// Example inputs and outputs:
+//
+//	"metadata.annotations['myKey']" --> ("metadata.annotations", "myKey", true)
+//	"metadata.annotations['a[b]c']" --> ("metadata.annotations", "a[b]c", true)
+//	"metadata.labels['']"           --> ("metadata.labels", "", true)
+//	"metadata.labels"               --> ("metadata.labels", "", false)
+func splitMaybeSubscriptedPath(fieldPath string) (string, string, bool) {
+	if !strings.HasSuffix(fieldPath, "']") {
+		return fieldPath, "", false
+	}
+	s := strings.TrimSuffix(fieldPath, "']")
+	parts := strings.SplitN(s, "['", 2)
+	if len(parts) < 2 {
+		return fieldPath, "", false
+	}
+	if len(parts[0]) == 0 {
+		return fieldPath, "", false
+	}
+	return parts[0], parts[1], true
+}
+
+func extractSingleValueFromPodMeta(pod *workloadmeta.KubernetesPod, c instrumentation.TracerConfig) (string, bool, error) {
+	if c.ValueFrom == nil {
+		return c.Value, c.Value != "", nil
+	}
+
+	if c.ValueFrom.FieldRef == nil {
+		return "", false, nil
+	}
+
+	fieldPath := c.ValueFrom.FieldRef.FieldPath
+	if path, subscript, ok := splitMaybeSubscriptedPath(fieldPath); ok {
+		switch path {
+		case "metadta.annotations":
+			value, present := pod.Annotations[subscript]
+			return value, present, nil
+		case "metadata.labels":
+			value, present := pod.Labels[subscript]
+			return value, present, nil
+		default:
+			return "", false, fmt.Errorf("invalid fieldPath with subscript %s", fieldPath)
+		}
+	}
+
+	switch fieldPath {
+	case "metadata.name":
+		return pod.Name, true, nil
+	case "metadata.namespace":
+		return pod.Namespace, true, nil
+	case "metadata.uid":
+		return pod.ID, true, nil // N.B. This might be wrong.
+	}
+
+	return "", false, fmt.Errorf("unsupported access of fieldPath %s", fieldPath)
 }
