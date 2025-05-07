@@ -23,7 +23,7 @@ import (
 
 const (
 	checkLinkage                  = false
-	FileMetadataResolverCacheSize = 512
+	fileMetadataResolverCacheSize = 512
 )
 
 // Resolver represents a cache for mountpoints and the corresponding file systems
@@ -47,7 +47,7 @@ type LRUCacheKey struct {
 
 // NewResolver returns a new instance of the hash resolver
 func NewResolver(statsdClient statsd.ClientInterface, cgroupResolver *cgroup.Resolver) (*Resolver, error) {
-	cache, err := lru.New[LRUCacheKey, *model.FileMetadatas](FileMetadataResolverCacheSize)
+	cache, err := lru.New[LRUCacheKey, *model.FileMetadatas](fileMetadataResolverCacheSize)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't create file metadatas resolver cache: %w", err)
 	}
@@ -61,6 +61,7 @@ func NewResolver(statsdClient statsd.ClientInterface, cgroupResolver *cgroup.Res
 	}, nil
 }
 
+// ResolveFileMetadatas resolves file metadatas
 func (r *Resolver) ResolveFileMetadatas(event *model.Event, file *model.FileEvent) (*model.FileMetadatas, error) {
 	// TODO: needed?
 	// resolve FileEvent

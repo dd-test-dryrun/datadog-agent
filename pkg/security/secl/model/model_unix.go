@@ -399,6 +399,7 @@ type ExecEvent struct {
 	SyscallPath string `field:"syscall.path,ref:exec.syscall.str1"` // SECLDoc[syscall.path] Definition:`path argument of the syscall`
 }
 
+// FileMetadatas represents file metadatas
 type FileMetadatas struct {
 	Size               int64 `field:"size"`                 // SECLDoc[size] Definition:`[Experimental] Size of the file`
 	Type               int   `field:"type"`                 // SECLDoc[type] Definition:`[Experimental] Type of the file` Constants:`FileType`

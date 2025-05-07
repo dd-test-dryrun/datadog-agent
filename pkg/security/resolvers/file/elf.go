@@ -6,11 +6,11 @@
 package file
 
 import (
-	"debug/elf"
 	"fmt"
 	"os"
 
 	"github.com/DataDog/datadog-agent/pkg/security/secl/model"
+	"github.com/DataDog/datadog-agent/pkg/util/safeelf"
 )
 
 func isELF(header []byte, fileSize int64) bool {
@@ -74,7 +74,7 @@ func analyzeELF(file *os.File, data []byte, info *model.FileMetadatas, checkLink
 
 	// Parse full ELF file for linkage check if needed
 	if checkLinkage {
-		elfFile, err := elf.NewFile(file)
+		elfFile, err := safeelf.NewFile(file)
 		if err != nil {
 			return fmt.Errorf("failed to parse ELF file: %w", err)
 		}

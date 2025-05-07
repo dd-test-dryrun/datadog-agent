@@ -653,6 +653,26 @@ Definition: Exit code of the process or number of the signal that caused the pro
 
 Constants are used to improve the readability of your rules. Some constants are common to all architectures, others are specific to some architectures.
 
+### `ABI` {#abi}
+ABI used for binary compilation.
+
+| Name | Architectures |
+| ---- |---------------|
+| `32_BIT` | all |
+| `64_BIT` | all |
+| `UNKNOWN_ABI` | all |
+
+### `Architecture` {#architecture}
+Architecture of the binary.
+
+| Name | Architectures |
+| ---- |---------------|
+| `X86` | all |
+| `X86_64` | all |
+| `ARM` | all |
+| `ARM64` | all |
+| `UNKNOWN_ARCHITECTURE` | all |
+
 ### `Boolean constants` {#boolean-constants}
 Boolean constants are the supported boolean constants.
 
@@ -660,6 +680,19 @@ Boolean constants are the supported boolean constants.
 | ---- |---------------|
 | `true` | all |
 | `false` | all |
+
+### `CompressionType` {#compressiontype}
+Compression algorithm.
+
+| Name | Architectures |
+| ---- |---------------|
+| `NONE` | all |
+| `GZIP` | all |
+| `ZIP` | all |
+| `ZSTD` | all |
+| `7Z` | all |
+| `BZIP2` | all |
+| `XZ` | all |
 
 ### `DNS qclasses` {#dns-qclasses}
 DNS qclasses are the supported DNS query classes.
@@ -762,6 +795,21 @@ DNS qtypes are the supported DNS query types.
 | `TA` | all |
 | `DLV` | all |
 | `Reserved` | all |
+
+### `FileType` {#filetype}
+File types.
+
+| Name | Architectures |
+| ---- |---------------|
+| `EMPTY` | all |
+| `SHELL_SCRIPT` | all |
+| `TEXT` | all |
+| `COMPRESSED` | all |
+| `ENCRYPTED` | all |
+| `BINARY` | all |
+| `LINUX_EXECUTABLE` | all |
+| `WINDOWS_EXECUTABLE` | all |
+| `MACOS_EXECUTABLE` | all |
 
 ### `L3 protocols` {#l3-protocols}
 L3 protocols are the supported Layer 3 protocols.
@@ -891,6 +939,15 @@ L4 protocols are the supported Layer 4 protocols.
 | `IP_PROTO_UDPLITE` | all |
 | `IP_PROTO_MPLS` | all |
 | `IP_PROTO_RAW` | all |
+
+### `LinkageType` {#linkagetype}
+Linkage types.
+
+| Name | Architectures |
+| ---- |---------------|
+| `NONE` | all |
+| `STATIC` | all |
+| `DYNAMIC` | all |
 
 ### `Network directions` {#network-directions}
 Network directions are the supported directions of network packets.

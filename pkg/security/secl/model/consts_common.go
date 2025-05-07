@@ -405,11 +405,11 @@ var (
 	networkDirectionStrings = map[NetworkDirection]string{}
 	addressFamilyStrings    = map[uint16]string{}
 	tlsVersionStrings       = map[uint16]string{}
-	ABIStrings              = map[ABI]string{}
-	ArchitectureStrings     = map[Architecture]string{}
-	CompressionTypeStrings  = map[CompressionType]string{}
-	FileTypeStrings         = map[FileType]string{}
-	LinkageTypeStrings      = map[LinkageType]string{}
+	abiStrings              = map[ABI]string{}
+	architectureStrings     = map[Architecture]string{}
+	compressionTypeStrings  = map[CompressionType]string{}
+	fileTypeStrings         = map[FileType]string{}
+	linkageTypeStrings      = map[LinkageType]string{}
 )
 
 // File flags
@@ -513,35 +513,35 @@ func initSSLVersionConstants() {
 func initABIConstants() {
 	for k, v := range ABIConstants {
 		seclConstants[k] = &eval.IntEvaluator{Value: int(v)}
-		ABIStrings[v] = k
+		abiStrings[v] = k
 	}
 }
 
 func initArchitectureConstants() {
 	for k, v := range ArchitectureConstants {
 		seclConstants[k] = &eval.IntEvaluator{Value: int(v)}
-		ArchitectureStrings[v] = k
+		architectureStrings[v] = k
 	}
 }
 
 func initCompressionTypeConstants() {
 	for k, v := range CompressionTypeConstants {
 		seclConstants[k] = &eval.IntEvaluator{Value: int(v)}
-		CompressionTypeStrings[v] = k
+		compressionTypeStrings[v] = k
 	}
 }
 
 func initFileTypeConstants() {
 	for k, v := range FileTypeConstants {
 		seclConstants[k] = &eval.IntEvaluator{Value: int(v)}
-		FileTypeStrings[v] = k
+		fileTypeStrings[v] = k
 	}
 }
 
 func initLinkageTypeConstants() {
 	for k, v := range LinkageTypeConstants {
 		seclConstants[k] = &eval.IntEvaluator{Value: int(v)}
-		LinkageTypeStrings[v] = k
+		linkageTypeStrings[v] = k
 	}
 }
 
@@ -911,75 +911,102 @@ const (
 type ABI int
 
 const (
+	// UnknownABI when ABI is unknown
 	UnknownABI ABI = iota
+	// Bit32 represents 32 bits ABI
 	Bit32
+	// Bit64 represents 64 bits ABI
 	Bit64
 )
 
 func (a ABI) String() string {
-	return ABIStrings[a]
+	return abiStrings[a]
 }
 
 // Architecture represents the CPU architecture
 type Architecture int
 
 const (
+	// UnknownArch when arch is unknown
 	UnknownArch Architecture = iota
+	// X86 arch
 	X86
+	// X86_64 arch
 	X86_64
+	// ARM arch
 	ARM
+	// ARM64 arch
 	ARM64
 )
 
 func (a Architecture) String() string {
-	return ArchitectureStrings[a]
+	return architectureStrings[a]
 }
 
 // CompressionType represents the type of compression used
 type CompressionType int
 
 const (
+	// NoCompression When there is no compression
 	NoCompression CompressionType = iota
+	// GZip compression
 	GZip
+	// Zip compression
 	Zip
+	// Zstd compression
 	Zstd
+	// SevenZip compression
 	SevenZip
+	// BZip2 compression
 	BZip2
+	// XZ compression
 	XZ
 )
 
 func (ct CompressionType) String() string {
-	return CompressionTypeStrings[ct]
+	return compressionTypeStrings[ct]
 }
 
 // FileType represents the type of the analyzed file
 type FileType int
 
 const (
+	// Empty file
 	Empty FileType = iota
+	// ShellScript file
 	ShellScript
+	// Text file
 	Text
+	// Compressed file
 	Compressed
+	// Encrypted file
 	Encrypted
+	// Binary file
 	Binary
+	// ELFExecutable file
 	ELFExecutable
+	// PEExecutable file
 	PEExecutable
+	// MachOExecutable file
 	MachOExecutable
 )
 
 func (ft FileType) String() string {
-	return FileTypeStrings[ft]
+	return fileTypeStrings[ft]
 }
 
 // LinkageType represents the type of linkage used in the binary
 type LinkageType int
 
 const (
+	// None when unknown or for non-binary files
 	None LinkageType = iota
+	// Static linked executables
 	Static
+	// Dynamic linked executables
 	Dynamic
 )
 
 func (l LinkageType) String() string {
-	return LinkageTypeStrings[l]
+	return linkageTypeStrings[l]
 }
