@@ -356,7 +356,7 @@ var (
 	// generate_constants:Architecture,Architecture of the binary.
 	ArchitectureConstants = map[string]Architecture{
 		"X86":                  X86,
-		"X86_64":               X86_64,
+		"X86_64":               X8664,
 		"ARM":                  ARM,
 		"ARM64":                ARM64,
 		"UNKNOWN_ARCHITECTURE": UnknownArch,
@@ -931,8 +931,8 @@ const (
 	UnknownArch Architecture = iota
 	// X86 arch
 	X86
-	// X86_64 arch
-	X86_64
+	// X8664 represents X86_64 arch, but with a "nicer" naming to pass CI linters
+	X8664
 	// ARM arch
 	ARM
 	// ARM64 arch

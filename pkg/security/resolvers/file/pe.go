@@ -49,7 +49,7 @@ func determinePEArchitectureFromHeader(file *os.File, data []byte) (model.ABI, m
 		arch = model.X86
 		abi = model.Bit32
 	case pe.IMAGE_FILE_MACHINE_AMD64:
-		arch = model.X86_64
+		arch = model.X8664
 		abi = model.Bit64
 	case 0x01c4: // IMAGE_FILE_MACHINE_ARMNT
 		arch = model.ARM

@@ -48,7 +48,7 @@ func getMachOArchAndABI(header []byte, fileSize int64) (model.ABI, model.Archite
 	arch := model.UnknownArch
 	switch cpuType {
 	case 0x01000007: // CPU_TYPE_X86_64
-		arch = model.X86_64
+		arch = model.X8664
 	case 0x0100000c: // CPU_TYPE_ARM64
 		arch = model.ARM64
 	case 0x00000007: // CPU_TYPE_I386

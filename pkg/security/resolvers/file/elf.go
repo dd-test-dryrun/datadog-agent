@@ -51,7 +51,7 @@ func getELFInfoFromHeader(header []byte) (model.ABI, model.Architecture, error) 
 	case 3: // EM_386
 		arch = model.X86
 	case 62: // EM_X86_64
-		arch = model.X86_64
+		arch = model.X8664
 	case 40: // EM_ARM
 		arch = model.ARM
 	case 183: // EM_AARCH64
