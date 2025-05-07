@@ -8,9 +8,6 @@
 package instrumentation
 
 import (
-	"fmt"
-	"strings"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -160,59 +157,6 @@ type TracerConfig struct {
 	Value string `json:"value,omitempty"`
 	// ValueFrom is the source for the environment variable's value.
 	ValueFrom *corev1.EnvVarSource `json:"valueFrom,omitempty"`
-}
-
-// splitMaybeSubscriptedPath checks whether the specified fieldPath is
-// subscripted, and
-//   - if yes, this function splits the fieldPath into path and subscript, and
-//     returns (path, subscript, true).
-//   - if no, this function returns (fieldPath, "", false).
-//
-// Example inputs and outputs:
-//
-//	"metadata.annotations['myKey']" --> ("metadata.annotations", "myKey", true)
-//	"metadata.annotations['a[b]c']" --> ("metadata.annotations", "a[b]c", true)
-//	"metadata.labels['']"           --> ("metadata.labels", "", true)
-//	"metadata.labels"               --> ("metadata.labels", "", false)
-func splitMaybeSubscriptedPath(fieldPath string) (string, string, bool) {
-	if !strings.HasSuffix(fieldPath, "']") {
-		return fieldPath, "", false
-	}
-	s := strings.TrimSuffix(fieldPath, "']")
-	parts := strings.SplitN(s, "['", 2)
-	if len(parts) < 2 {
-		return fieldPath, "", false
-	}
-	if len(parts[0]) == 0 {
-		return fieldPath, "", false
-	}
-	return parts[0], parts[1], true
-}
-
-func (c TracerConfig) ExtractSingleValueFromPodMeta(annotations, labels map[string]string) (string, bool, error) {
-	if c.ValueFrom == nil {
-		return c.Value, c.Value != "", nil
-	}
-
-	if c.ValueFrom.FieldRef == nil {
-		return "", false, nil
-	}
-
-	fieldPath := c.ValueFrom.FieldRef.FieldPath
-	if path, subscript, ok := splitMaybeSubscriptedPath(fieldPath); ok {
-		switch path {
-		case "metadta.annotations":
-			value, present := annotations[subscript]
-			return value, present, nil
-		case "metadata.labels":
-			value, present := labels[subscript]
-			return value, present, nil
-		default:
-			return "", false, fmt.Errorf("invalid fieldPath with subscript %s", fieldPath)
-		}
-	}
-
-	return "", false, fmt.Errorf("unsupported access of fieldPath %s", fieldPath)
 }
 
 // AsEnvVar converts the TracerConfig to a corev1.EnvVar.
