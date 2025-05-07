@@ -1,0 +1,136 @@
+// Unless explicitly stated otherwise all files in this repository are licensed
+// under the Apache License Version 2.0.
+// This product includes software developed at Datadog (https://www.datadoghq.com/).
+// Copyright 2016-present Datadog, Inc.
+
+// Package file holds file related files
+package file
+
+import (
+	"fmt"
+	"os"
+
+	"go.uber.org/atomic"
+
+	"github.com/DataDog/datadog-agent/pkg/security/metrics"
+	"github.com/DataDog/datadog-agent/pkg/security/resolvers/cgroup"
+	"github.com/DataDog/datadog-agent/pkg/security/secl/containerutils"
+	"github.com/DataDog/datadog-agent/pkg/security/secl/model"
+	"github.com/DataDog/datadog-agent/pkg/security/utils"
+	"github.com/DataDog/datadog-agent/pkg/security/utils/lru"
+	"github.com/DataDog/datadog-go/v5/statsd"
+)
+
+const (
+	checkLinkage                  = false
+	FileMetadataResolverCacheSize = 512
+)
+
+// Resolver represents a cache for mountpoints and the corresponding file systems
+type Resolver struct {
+	cache *lru.Cache[LRUCacheKey, *model.FileMetadatas]
+
+	cgroupResolver *cgroup.Resolver
+
+	// stats
+	statsdClient statsd.ClientInterface
+	cacheHit     *atomic.Uint64
+	cacheMiss    *atomic.Uint64
+}
+
+// LRUCacheKey is the structure used to access cached metadatas
+type LRUCacheKey struct {
+	containerID containerutils.ContainerID
+	path        string
+	mTime       int64
+}
+
+// NewResolver returns a new instance of the hash resolver
+func NewResolver(statsdClient statsd.ClientInterface, cgroupResolver *cgroup.Resolver) (*Resolver, error) {
+	cache, err := lru.New[LRUCacheKey, *model.FileMetadatas](FileMetadataResolverCacheSize)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't create file metadatas resolver cache: %w", err)
+	}
+
+	return &Resolver{
+		statsdClient:   statsdClient,
+		cgroupResolver: cgroupResolver,
+		cache:          cache,
+		cacheHit:       atomic.NewUint64(0),
+		cacheMiss:      atomic.NewUint64(0),
+	}, nil
+}
+
+func (r *Resolver) ResolveFileMetadatas(event *model.Event, file *model.FileEvent) (*model.FileMetadatas, error) {
+	// TODO: needed?
+	// resolve FileEvent
+	event.FieldHandlers.ResolveFilePath(event, file)
+
+	process := event.ProcessContext.Process
+
+	// add pid one for hash resolution outside of a container
+	rootPIDs := []uint32{1, process.Pid}
+	if process.ContainerID != "" && r.cgroupResolver != nil {
+		w, ok := r.cgroupResolver.GetWorkload(process.ContainerID)
+		if ok {
+			rootPIDs = w.GetPIDs()
+		}
+	}
+
+	for _, pid := range rootPIDs {
+		//  get proc path
+		path := utils.ProcRootFilePath(pid, file.PathnameStr)
+
+		// get file stats
+		fileInfo, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+
+		// init the cache key to lookup
+		key := LRUCacheKey{
+			containerID: process.ContainerID,
+			path:        path,
+			mTime:       fileInfo.ModTime().UnixNano(),
+		}
+
+		// cache lookup
+		entry, ok := r.cache.Get(key)
+		if ok {
+			r.cacheHit.Inc()
+			// fmt.Printf("ResolveFile return cache %s: %+v\n", path, entry)
+			return entry, nil
+		}
+
+		// if no result in cache, analyze the file an return result
+		info, err := AnalyzeFile(path, fileInfo, checkLinkage)
+		if err != nil {
+			continue
+		}
+
+		// fmt.Printf("ResolveFile %s: %+v\n", path, info)
+		r.cacheMiss.Inc()
+		r.cache.Add(key, info)
+		return info, nil
+	}
+	return nil, fmt.Errorf("failed to analyze file metadatas for %s", file.PathnameStr)
+}
+
+// SendStats sends the resolver metrics
+func (r *Resolver) SendStats() error {
+	if r.statsdClient == nil {
+		return nil
+	}
+
+	hits := r.cacheHit.Swap(0)
+	if err := r.statsdClient.Count(metrics.MetricFileResolverCacheHit, int64(hits), []string{}, 1.0); err != nil {
+		return fmt.Errorf("couldn't send MetricFileResolverCacheHit metric: %w", err)
+	}
+
+	misses := r.cacheMiss.Swap(0)
+	if err := r.statsdClient.Count(metrics.MetricFileResolverCacheMiss, int64(misses), []string{}, 1.0); err != nil {
+		return fmt.Errorf("couldn't send MetricFileResolverCacheMiss metric: %w", err)
+	}
+
+	return nil
+}

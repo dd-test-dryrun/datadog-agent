@@ -343,6 +343,58 @@ var (
 		"TLS_1_2": 0x0303,
 		"TLS_1_3": 0x0304,
 	}
+
+	// ABIConstants defines ABI constants
+	// generate_constants:ABI,ABI used for binary compilation.
+	ABIConstants = map[string]ABI{
+		"32_BIT":      Bit32,
+		"64_BIT":      Bit64,
+		"UNKNOWN_ABI": UnknownABI,
+	}
+
+	// ArchitectureConstants defines architecture constants
+	// generate_constants:Architecture,Architecture of the binary.
+	ArchitectureConstants = map[string]Architecture{
+		"X86":                  X86,
+		"X86_64":               X86_64,
+		"ARM":                  ARM,
+		"ARM64":                ARM64,
+		"UNKNOWN_ARCHITECTURE": UnknownArch,
+	}
+
+	// CompressionTypeConstants defines compression type constants
+	// generate_constants:CompressionType,Compression algorithm.
+	CompressionTypeConstants = map[string]CompressionType{
+		"NONE":  NoCompression,
+		"GZIP":  GZip,
+		"ZIP":   Zip,
+		"ZSTD":  Zstd,
+		"7Z":    SevenZip,
+		"BZIP2": BZip2,
+		"XZ":    XZ,
+	}
+
+	// FileTypeConstants defines file type constants
+	// generate_constants:FileType,File types.
+	FileTypeConstants = map[string]FileType{
+		"EMPTY":              Empty,
+		"SHELL_SCRIPT":       ShellScript,
+		"TEXT":               Text,
+		"COMPRESSED":         Compressed,
+		"ENCRYPTED":          Encrypted,
+		"BINARY":             Binary,
+		"LINUX_EXECUTABLE":   ELFExecutable,
+		"WINDOWS_EXECUTABLE": PEExecutable,
+		"MACOS_EXECUTABLE":   MachOExecutable,
+	}
+
+	// LinkageTypeConstants defines linkage type constants
+	// generate_constants:LinkageType,Linkage types.
+	LinkageTypeConstants = map[string]LinkageType{
+		"NONE":    None,
+		"STATIC":  Static,
+		"DYNAMIC": Dynamic,
+	}
 )
 
 var (
@@ -353,6 +405,11 @@ var (
 	networkDirectionStrings = map[NetworkDirection]string{}
 	addressFamilyStrings    = map[uint16]string{}
 	tlsVersionStrings       = map[uint16]string{}
+	ABIStrings              = map[ABI]string{}
+	ArchitectureStrings     = map[Architecture]string{}
+	CompressionTypeStrings  = map[CompressionType]string{}
+	FileTypeStrings         = map[FileType]string{}
+	LinkageTypeStrings      = map[LinkageType]string{}
 )
 
 // File flags
@@ -453,6 +510,41 @@ func initSSLVersionConstants() {
 	}
 }
 
+func initABIConstants() {
+	for k, v := range ABIConstants {
+		seclConstants[k] = &eval.IntEvaluator{Value: int(v)}
+		ABIStrings[v] = k
+	}
+}
+
+func initArchitectureConstants() {
+	for k, v := range ArchitectureConstants {
+		seclConstants[k] = &eval.IntEvaluator{Value: int(v)}
+		ArchitectureStrings[v] = k
+	}
+}
+
+func initCompressionTypeConstants() {
+	for k, v := range CompressionTypeConstants {
+		seclConstants[k] = &eval.IntEvaluator{Value: int(v)}
+		CompressionTypeStrings[v] = k
+	}
+}
+
+func initFileTypeConstants() {
+	for k, v := range FileTypeConstants {
+		seclConstants[k] = &eval.IntEvaluator{Value: int(v)}
+		FileTypeStrings[v] = k
+	}
+}
+
+func initLinkageTypeConstants() {
+	for k, v := range LinkageTypeConstants {
+		seclConstants[k] = &eval.IntEvaluator{Value: int(v)}
+		LinkageTypeStrings[v] = k
+	}
+}
+
 func initConstants() {
 	initBoolConstants()
 	initErrorConstants()
@@ -484,6 +576,11 @@ func initConstants() {
 	usersession.InitUserSessionTypes()
 	initSSLVersionConstants()
 	initSysCtlActionConstants()
+	initABIConstants()
+	initArchitectureConstants()
+	initCompressionTypeConstants()
+	initFileTypeConstants()
+	initLinkageTypeConstants()
 }
 
 // RetValError represents a syscall return error value
@@ -809,3 +906,80 @@ const (
 	// Ingress is used to identify ingress traffic
 	Ingress
 )
+
+// ABI represents the Application Binary Interface type
+type ABI int
+
+const (
+	UnknownABI ABI = iota
+	Bit32
+	Bit64
+)
+
+func (a ABI) String() string {
+	return ABIStrings[a]
+}
+
+// Architecture represents the CPU architecture
+type Architecture int
+
+const (
+	UnknownArch Architecture = iota
+	X86
+	X86_64
+	ARM
+	ARM64
+)
+
+func (a Architecture) String() string {
+	return ArchitectureStrings[a]
+}
+
+// CompressionType represents the type of compression used
+type CompressionType int
+
+const (
+	NoCompression CompressionType = iota
+	GZip
+	Zip
+	Zstd
+	SevenZip
+	BZip2
+	XZ
+)
+
+func (ct CompressionType) String() string {
+	return CompressionTypeStrings[ct]
+}
+
+// FileType represents the type of the analyzed file
+type FileType int
+
+const (
+	Empty FileType = iota
+	ShellScript
+	Text
+	Compressed
+	Encrypted
+	Binary
+	ELFExecutable
+	PEExecutable
+	MachOExecutable
+)
+
+func (ft FileType) String() string {
+	return FileTypeStrings[ft]
+}
+
+// LinkageType represents the type of linkage used in the binary
+type LinkageType int
+
+const (
+	None LinkageType = iota
+	Static
+	Dynamic
+)
+
+func (l LinkageType) String() string {
+	return LinkageTypeStrings[l]
+}
