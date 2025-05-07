@@ -22,8 +22,6 @@ import (
 	pkgconfigsetup "github.com/DataDog/datadog-agent/pkg/config/setup"
 	"github.com/DataDog/datadog-agent/pkg/util/kubernetes"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
-
-	"github.com/DataDog/datadog-agent/pkg/apm/instrumentation"
 )
 
 const (
@@ -332,6 +330,27 @@ func (c *WorkloadMetaCollector) labelsToTags(labels map[string]string, tags *tag
 	}
 }
 
+func (c *WorkloadMetaCollector) extractTagsFromPodInstrumentationTarget(pod *workloadmeta.KubernetesPod, tagList *taglist.TagList) {
+	target := pod.EvaluatedInstrumentationWorkloadTarget
+	if target == nil {
+		return
+	}
+
+	if target.Service != "" {
+		tagList.AddStandard(tags.Service, target.Service)
+	}
+
+	if target.Version != "" {
+		tagList.AddStandard(tags.Version, target.Version)
+	}
+
+	if target.Env != "" {
+		tagList.AddStandard(tags.Env, target.Env)
+	}
+
+	// POC
+}
+
 func (c *WorkloadMetaCollector) extractTagsFromPodEntity(pod *workloadmeta.KubernetesPod, tagList *taglist.TagList) *types.TagInfo {
 	tagList.AddOrchestrator(tags.KubePod, pod.Name)
 	tagList.AddLow(tags.KubeNamespace, pod.Namespace)
@@ -443,6 +462,48 @@ func (c *WorkloadMetaCollector) handleKubePod(ev workloadmeta.Event) []*types.Ta
 		}
 
 		tagInfos = append(tagInfos, cTagInfo)
+	}
+
+	if t := pod.EvaluatedInstrumentationWorkloadTarget; t != nil {
+		var deploymentName string
+	Loop:
+		for _, owner := range pod.Owners {
+			switch owner.Kind {
+			case kubernetes.DeploymentKind:
+				deploymentName = owner.Name
+				break Loop
+			case kubernetes.ReplicaSetKind:
+				deploymentName = kubernetes.ParseDeploymentForReplicaSet(owner.Name)
+				break Loop
+			}
+		}
+
+		if deploymentName != "" {
+			deployment, err := c.store.GetKubernetesDeployment(pod.Namespace + "/" + deploymentName)
+			if err != nil {
+				log.Warnf("error getting deployment: %s", err)
+			} else {
+				dTags := taglist.NewTagList()
+				if deployment.Env == "" && t.Env != "" {
+					dTags.AddStandard(tags.Env, t.Env)
+				}
+				if deployment.Service == "" && t.Service != "" {
+					dTags.AddStandard(tags.Service, t.Service)
+				}
+				if deployment.Version == "" && t.Version != "" {
+					dTags.AddStandard(tags.Version, t.Version)
+				}
+				_, _, _, standard := tagList.Compute()
+				if len(standard) > 0 {
+					tagInfos = append(tagInfos, &types.TagInfo{
+						Source:       podSource,
+						EntityID:     common.BuildTaggerEntityID(deployment.EntityID),
+						StandardTags: standard,
+					})
+				}
+
+			}
+		}
 	}
 
 	return tagInfos
@@ -649,42 +710,6 @@ func (c *WorkloadMetaCollector) handleGPU(ev workloadmeta.Event) []*types.TagInf
 	}
 
 	return tagInfos
-}
-
-func (c *WorkloadMetaCollector) extractTagsFromPodInstrumentationTarget(pod *workloadmeta.KubernetesPod, tagList *taglist.TagList) {
-	targetJSON, ok := pod.Annotations[instrumentation.AppliedTargetAnnotation]
-	if !ok {
-		return
-	}
-
-	var target instrumentation.Target
-	if err := json.NewDecoder(strings.NewReader(targetJSON)).Decode(&target); err != nil {
-		log.Warnf("error parsing instrumentation target JSON: %s", err)
-		return
-	}
-
-	for _, tc := range target.TracerConfigs {
-		var tag string
-		switch tc.Name {
-		case kubernetes.ServiceTagEnvVar:
-			tag = tags.Service
-		case kubernetes.EnvTagEnvVar:
-			tag = tags.Env
-		case kubernetes.VersionTagEnvVar:
-			tag = tags.Version
-		}
-
-		if tag == "" {
-			continue
-		}
-
-		value, extracted, err := extractSingleValueFromPodMeta(pod, tc)
-		if err != nil {
-			log.Warnf("Error parsing value workload data from pod metadata for env %s: %s", tc.Name, err)
-		} else if extracted {
-			tagList.AddStandard(tag, value)
-		}
-	}
 }
 
 func (c *WorkloadMetaCollector) extractTagsFromPodLabels(pod *workloadmeta.KubernetesPod, tagList *taglist.TagList) {
@@ -946,66 +971,4 @@ func parseContainerADTagsLabels(tags *taglist.TagList, labelValue string) {
 		}
 		tags.AddHigh(tagParts[0], tagParts[1])
 	}
-}
-
-// splitMaybeSubscriptedPath checks whether the specified fieldPath is
-// subscripted, and
-//   - if yes, this function splits the fieldPath into path and subscript, and
-//     returns (path, subscript, true).
-//   - if no, this function returns (fieldPath, "", false).
-//
-// Example inputs and outputs:
-//
-//	"metadata.annotations['myKey']" --> ("metadata.annotations", "myKey", true)
-//	"metadata.annotations['a[b]c']" --> ("metadata.annotations", "a[b]c", true)
-//	"metadata.labels['']"           --> ("metadata.labels", "", true)
-//	"metadata.labels"               --> ("metadata.labels", "", false)
-func splitMaybeSubscriptedPath(fieldPath string) (string, string, bool) {
-	if !strings.HasSuffix(fieldPath, "']") {
-		return fieldPath, "", false
-	}
-	s := strings.TrimSuffix(fieldPath, "']")
-	parts := strings.SplitN(s, "['", 2)
-	if len(parts) < 2 {
-		return fieldPath, "", false
-	}
-	if len(parts[0]) == 0 {
-		return fieldPath, "", false
-	}
-	return parts[0], parts[1], true
-}
-
-func extractSingleValueFromPodMeta(pod *workloadmeta.KubernetesPod, c instrumentation.TracerConfig) (string, bool, error) {
-	if c.ValueFrom == nil {
-		return c.Value, c.Value != "", nil
-	}
-
-	if c.ValueFrom.FieldRef == nil {
-		return "", false, nil
-	}
-
-	fieldPath := c.ValueFrom.FieldRef.FieldPath
-	if path, subscript, ok := splitMaybeSubscriptedPath(fieldPath); ok {
-		switch path {
-		case "metadta.annotations":
-			value, present := pod.Annotations[subscript]
-			return value, present, nil
-		case "metadata.labels":
-			value, present := pod.Labels[subscript]
-			return value, present, nil
-		default:
-			return "", false, fmt.Errorf("invalid fieldPath with subscript %s", fieldPath)
-		}
-	}
-
-	switch fieldPath {
-	case "metadata.name":
-		return pod.Name, true, nil
-	case "metadata.namespace":
-		return pod.Namespace, true, nil
-	case "metadata.uid":
-		return pod.ID, true, nil // N.B. This might be wrong.
-	}
-
-	return "", false, fmt.Errorf("unsupported access of fieldPath %s", fieldPath)
 }
