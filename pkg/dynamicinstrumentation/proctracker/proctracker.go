@@ -73,6 +73,10 @@ func (pt *ProcessTracker) Stop() {
 }
 
 func (pt *ProcessTracker) handleProcessStart(pid uint32) {
+	go pt.HandleProcessStartSync(pid)
+}
+
+func (pt *ProcessTracker) HandleProcessStartSync(pid uint32) {
 	exePath := kernel.HostProc(strconv.Itoa(int(pid)), "exe")
 	go pt.inspectBinary(exePath, pid)
 }
