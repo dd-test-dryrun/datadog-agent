@@ -778,6 +778,13 @@ func (p KubernetesPod) String(verbose bool) string {
 		}
 	}
 
+	if t := p.EvaluatedInstrumentationWorkloadTarget; t != nil {
+		_, _ = fmt.Fprintln(&sb, "----------- Instrumentation Workload Target -----------")
+		_, _ = fmt.Fprintln(&sb, "Service:", t.Service)
+		_, _ = fmt.Fprintln(&sb, "Env:", t.Env)
+		_, _ = fmt.Fprintln(&sb, "Version:", t.Version)
+	}
+
 	_, _ = fmt.Fprintln(&sb, "----------- Pod Info -----------")
 	_, _ = fmt.Fprintln(&sb, "Ready:", p.Ready)
 	_, _ = fmt.Fprintln(&sb, "Phase:", p.Phase)

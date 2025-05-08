@@ -336,6 +336,8 @@ func (c *WorkloadMetaCollector) extractTagsFromPodInstrumentationTarget(pod *wor
 		return
 	}
 
+	log.Debugf("evaluating instrumentation workload target: %s", target)
+
 	if target.Service != "" {
 		tagList.AddStandard(tags.Service, target.Service)
 	}
@@ -347,8 +349,6 @@ func (c *WorkloadMetaCollector) extractTagsFromPodInstrumentationTarget(pod *wor
 	if target.Env != "" {
 		tagList.AddStandard(tags.Env, target.Env)
 	}
-
-	// POC
 }
 
 func (c *WorkloadMetaCollector) extractTagsFromPodEntity(pod *workloadmeta.KubernetesPod, tagList *taglist.TagList) *types.TagInfo {
@@ -465,7 +465,9 @@ func (c *WorkloadMetaCollector) handleKubePod(ev workloadmeta.Event) []*types.Ta
 	}
 
 	if t := pod.EvaluatedInstrumentationWorkloadTarget; t != nil {
+		log.Debug("attempting to attach tags to the deployment from pod %s/%s", pod.Namespace, pod.Name)
 		var deploymentName string
+
 	Loop:
 		for _, owner := range pod.Owners {
 			switch owner.Kind {
@@ -479,6 +481,7 @@ func (c *WorkloadMetaCollector) handleKubePod(ev workloadmeta.Event) []*types.Ta
 		}
 
 		if deploymentName != "" {
+			log.Debugf("found deployment name for pod: %s", deploymentName)
 			deployment, err := c.store.GetKubernetesDeployment(pod.Namespace + "/" + deploymentName)
 			if err != nil {
 				log.Warnf("error getting deployment: %s", err)
@@ -493,7 +496,8 @@ func (c *WorkloadMetaCollector) handleKubePod(ev workloadmeta.Event) []*types.Ta
 				if deployment.Version == "" && t.Version != "" {
 					dTags.AddStandard(tags.Version, t.Version)
 				}
-				_, _, _, standard := tagList.Compute()
+				_, _, _, standard := dTags.Compute()
+				log.Debugf("adding standard tags: %v", standard)
 				if len(standard) > 0 {
 					tagInfos = append(tagInfos, &types.TagInfo{
 						Source:       podSource,
@@ -501,8 +505,9 @@ func (c *WorkloadMetaCollector) handleKubePod(ev workloadmeta.Event) []*types.Ta
 						StandardTags: standard,
 					})
 				}
-
 			}
+		} else {
+			log.Debug("didnt find deployment name")
 		}
 	}
 

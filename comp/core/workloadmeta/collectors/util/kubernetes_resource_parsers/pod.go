@@ -194,15 +194,19 @@ func withInstrumentationTags(pod *workloadmeta.KubernetesPod) *workloadmeta.Kube
 		return pod
 	}
 
+	log.Debugf("found instrumentation applied target JSON for pod %s/%s", pod.Namespace, pod.Name)
+
 	var t instrumentation.Target
 	if err := json.NewDecoder(strings.NewReader(targetJSON)).Decode(&t); err != nil {
 		log.Warnf("error parsing instrumentation target JSON: %s", err)
 		return pod
 	}
 
+	log.Debugf("found decoded target: %+v", t)
+
 	var (
 		isSet      bool
-		target     workloadmeta.InstrumentationWorkloadTarget
+		target     = &workloadmeta.InstrumentationWorkloadTarget{}
 		setService = func(v string) { target.Service = v }
 		setVersion = func(v string) { target.Version = v }
 		setEnv     = func(v string) { target.Env = v }
@@ -232,7 +236,7 @@ Loop:
 	}
 
 	if isSet {
-		pod.EvaluatedInstrumentationWorkloadTarget = &target
+		pod.EvaluatedInstrumentationWorkloadTarget = target
 	}
 
 	return pod
