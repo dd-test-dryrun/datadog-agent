@@ -723,6 +723,8 @@ type KubernetesPod struct {
 	EvaluatedInstrumentationWorkloadTarget *InstrumentationWorkloadTarget
 }
 
+// InstrumentationWorkloadTarget is data we've extracted based on autoinstrumentation
+// configuration for USTs.
 type InstrumentationWorkloadTarget struct {
 	Env, Service, Version string
 }

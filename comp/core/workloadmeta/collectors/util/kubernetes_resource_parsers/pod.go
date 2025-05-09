@@ -153,19 +153,25 @@ func splitMaybeSubscriptedPath(fieldPath string) (string, string, bool) {
 	return parts[0], parts[1], true
 }
 
-func extractSingleValueFromPodMeta(pod *workloadmeta.KubernetesPod, c instrumentation.TracerConfig) (string, bool, error) {
+func extractSingleValueFromPodMeta(
+	pod *workloadmeta.KubernetesPod,
+	c instrumentation.TracerConfig,
+) (string, bool, error) {
 	if c.ValueFrom == nil {
+		log.Debug("tracerConfig.ValueFrom is nil")
 		return c.Value, c.Value != "", nil
 	}
 
 	if c.ValueFrom.FieldRef == nil {
+		log.Debug("tracerConfig.ValueFrom.FieldRef is nil")
 		return "", false, nil
 	}
 
 	fieldPath := c.ValueFrom.FieldRef.FieldPath
 	if path, subscript, ok := splitMaybeSubscriptedPath(fieldPath); ok {
+		log.Debugf("found path and subscript: %s | %s", path, subscript)
 		switch path {
-		case "metadta.annotations":
+		case "metadata.annotations":
 			value, present := pod.Annotations[subscript]
 			return value, present, nil
 		case "metadata.labels":
@@ -176,21 +182,25 @@ func extractSingleValueFromPodMeta(pod *workloadmeta.KubernetesPod, c instrument
 		}
 	}
 
+	log.Debugf("split didn't work for fieldPath %s", fieldPath)
+
 	switch fieldPath {
 	case "metadata.name":
 		return pod.Name, true, nil
 	case "metadata.namespace":
 		return pod.Namespace, true, nil
 	case "metadata.uid":
-		return pod.ID, true, nil // N.B. This might be wrong.
+		return pod.ID, true, nil
 	}
 
 	return "", false, fmt.Errorf("unsupported access of fieldPath %s", fieldPath)
 }
 
 func withInstrumentationTags(pod *workloadmeta.KubernetesPod) *workloadmeta.KubernetesPod {
+	log.Debug("called withInstrumentationTags")
 	targetJSON, ok := pod.Annotations[instrumentation.AppliedTargetAnnotation]
 	if !ok {
+		log.Debugf("pod doesnt have annotation %s", instrumentation.AppliedTargetAnnotation)
 		return pod
 	}
 

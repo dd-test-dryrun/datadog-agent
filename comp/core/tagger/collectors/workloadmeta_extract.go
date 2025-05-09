@@ -155,6 +155,7 @@ func (c *WorkloadMetaCollector) processEvents(evBundle workloadmeta.EventBundle)
 			case workloadmeta.KindProcess:
 				// tagInfos = append(tagInfos, c.handleProcess(ev)...) No tags for now
 			case workloadmeta.KindKubernetesDeployment:
+				log.Debug("we see a deployment here")
 				tagInfos = append(tagInfos, c.handleKubeDeployment(ev)...)
 			case workloadmeta.KindGPU:
 				tagInfos = append(tagInfos, c.handleGPU(ev)...)
@@ -331,6 +332,7 @@ func (c *WorkloadMetaCollector) labelsToTags(labels map[string]string, tags *tag
 }
 
 func (c *WorkloadMetaCollector) extractTagsFromPodInstrumentationTarget(pod *workloadmeta.KubernetesPod, tagList *taglist.TagList) {
+	log.Debug("calling extractTagsFromPodInstrumentationTarget")
 	target := pod.EvaluatedInstrumentationWorkloadTarget
 	if target == nil {
 		return
@@ -465,7 +467,7 @@ func (c *WorkloadMetaCollector) handleKubePod(ev workloadmeta.Event) []*types.Ta
 	}
 
 	if t := pod.EvaluatedInstrumentationWorkloadTarget; t != nil {
-		log.Debug("attempting to attach tags to the deployment from pod %s/%s", pod.Namespace, pod.Name)
+		log.Debugf("attempting to attach tags to the deployment from pod %s/%s", pod.Namespace, pod.Name)
 		var deploymentName string
 
 	Loop:
@@ -497,10 +499,11 @@ func (c *WorkloadMetaCollector) handleKubePod(ev workloadmeta.Event) []*types.Ta
 					dTags.AddStandard(tags.Version, t.Version)
 				}
 				_, _, _, standard := dTags.Compute()
-				log.Debugf("adding standard tags: %v", standard)
 				if len(standard) > 0 {
+					log.Debugf("adding standard tags: %v", standard)
+					log.Debugf("double entityID: %s", common.BuildTaggerEntityID(deployment.EntityID))
 					tagInfos = append(tagInfos, &types.TagInfo{
-						Source:       podSource,
+						Source:       deploymentSource,
 						EntityID:     common.BuildTaggerEntityID(deployment.EntityID),
 						StandardTags: standard,
 					})
@@ -602,6 +605,7 @@ func (c *WorkloadMetaCollector) handleGardenContainer(container *workloadmeta.Co
 
 func (c *WorkloadMetaCollector) handleKubeDeployment(ev workloadmeta.Event) []*types.TagInfo {
 	deployment := ev.Entity.(*workloadmeta.KubernetesDeployment)
+	log.Debugf("deployment %s", deployment.Name)
 
 	groupResource := "deployments.apps"
 
@@ -609,7 +613,8 @@ func (c *WorkloadMetaCollector) handleKubeDeployment(ev workloadmeta.Event) []*t
 	annotationsAsTags := c.k8sResourcesAnnotationsAsTags[groupResource]
 
 	if len(labelsAsTags)+len(annotationsAsTags) == 0 {
-		return nil
+		log.Debugf("returning early %s", deployment.Name)
+		// return nil
 	}
 
 	globLabels := c.globK8sResourcesLabels[groupResource]
@@ -628,8 +633,11 @@ func (c *WorkloadMetaCollector) handleKubeDeployment(ev workloadmeta.Event) []*t
 	low, orch, high, standard := tagList.Compute()
 
 	if len(low)+len(orch)+len(high)+len(standard) == 0 {
-		return nil
+		log.Debugf("returning early (no tags) %s", deployment.Name)
+		// return nil
 	}
+
+	log.Debugf("entityID: %s", common.BuildTaggerEntityID(deployment.EntityID))
 
 	tagInfos := []*types.TagInfo{
 		{
@@ -667,9 +675,12 @@ func (c *WorkloadMetaCollector) handleKubeMetadata(ev workloadmeta.Event) []*typ
 		k8smetadata.AddMetadataAsTags(name, value, annotationsAsTags, globAnnotations, tagList)
 	}
 
+	log.Debugf("metadata for %s", groupResource, common.BuildTaggerEntityID(kubeMetadata.EntityID))
+
 	low, orch, high, standard := tagList.Compute()
 
 	if len(low)+len(orch)+len(high)+len(standard) == 0 {
+		log.Debugf("would skip metadata %s", groupResource)
 		return nil
 	}
 
