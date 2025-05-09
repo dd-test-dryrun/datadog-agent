@@ -110,7 +110,7 @@ func SetupDatabricks(s *common.Setup) error {
 		}
 		tracerEnvConfigEmr = append(tracerEnvConfigDatabricks, debugLogs)
 	}
-	s.Config.InjectTracerYAML.AdditionalEnvironmentVariables = tracerEnvConfigDatabricks
+	//s.Config.InjectTracerYAML.AdditionalEnvironmentVariables = tracerEnvConfigDatabricks
 
 	setupCommonHostTags(s)
 	installMethod := "manual"
