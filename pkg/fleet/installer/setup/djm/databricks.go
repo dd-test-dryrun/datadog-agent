@@ -221,8 +221,6 @@ func setClearHostTag(s *common.Setup, tagKey, value string) {
 }
 
 func setupDatabricksDriver(s *common.Setup) {
-	s.Packages.Install(common.DatadogAPMInjectPackage, databricksInjectorVersion)
-	s.Config.InjectTracerYAML.AdditionalEnvironmentVariables = tracerEnvConfigDatabricks
 	s.Out.WriteString("Setting up Spark integration config on the Driver\n")
 	setClearHostTag(s, "spark_node", "driver")
 
@@ -248,6 +246,8 @@ func setupDatabricksDriver(s *common.Setup) {
 }
 
 func setupDatabricksWorker(s *common.Setup) {
+	s.Packages.Install(common.DatadogAPMInjectPackage, databricksInjectorVersion)
+	s.Config.InjectTracerYAML.AdditionalEnvironmentVariables = tracerEnvConfigDatabricks
 	setClearHostTag(s, "spark_node", "worker")
 
 	if os.Getenv("WORKER_LOGS_ENABLED") == "true" {
