@@ -71,15 +71,16 @@ func (e *redisEncoder) encodeData(connectionData *USMConnectionData[redis.Key, *
 				aggregationBuilder.SetTruncated(key.Truncated)
 				aggregationBuilder.SetKeyName(key.KeyName)
 
-				for isErr, stats := range errorToStats.ErrorToStats {
+				for err, stats := range errorToStats.ErrorToStats {
 					if stats.Count == 0 {
 						continue
 					}
 					staticTags |= stats.StaticTags
 					aggregationBuilder.AddErrorToStats(func(errorToStatsBuilder *model.RedisStats_ErrorToStatsEntryBuilder) {
-						if !isErr {
+						if err == "" {
 							errorToStatsBuilder.SetKey(int32(model.RedisErrorType_RedisNoError))
-						} else {
+						} else if err == ""
+						else {
 							errorToStatsBuilder.SetKey(int32(model.RedisErrorType_RedisErrorTypeUnknown))
 						}
 						errorToStatsBuilder.SetValue(func(statsBuilder *model.RedisStatsEntryBuilder) {
