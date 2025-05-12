@@ -246,7 +246,7 @@ func (a *counterAggregator) flush(sender sender.Sender, k *KSMCheck, labelJoiner
 			labels[allowedLabel] = labelValues[i]
 		}
 
-		hostname, tags := k.hostnameAndTags(labels, labelJoiner, labelsMapperOverride(a.ksmMetricName))
+		hostname, tags := k.hostnameAndTags(labels, nil, labelJoiner, labelsMapperOverride(a.ksmMetricName))
 
 		sender.Gauge(ksmMetricPrefix+a.ddMetricName, count, hostname, tags)
 	}
@@ -267,7 +267,7 @@ func (a *resourceAggregator) flush(sender sender.Sender, k *KSMCheck, labelJoine
 				labels[allowedLabel] = labelValues[i]
 			}
 
-			hostname, tags := k.hostnameAndTags(labels, labelJoiner, labelsMapperOverride(a.ksmMetricName))
+			hostname, tags := k.hostnameAndTags(labels, nil, labelJoiner, labelsMapperOverride(a.ksmMetricName))
 			sender.Gauge(metricName, count, hostname, tags)
 		}
 		a.accumulators[resource] = make(map[[maxNumberOfAllowedLabels]string]float64)
@@ -289,6 +289,7 @@ func (a *lastCronJobAggregator) flush(sender sender.Sender, k *KSMCheck, labelJo
 				"namespace": cronjob.namespace,
 				"cronjob":   cronjob.name,
 			},
+			nil,
 			labelJoiner,
 			nil,
 		)

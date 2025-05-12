@@ -10,11 +10,16 @@
 package store
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
+	"github.com/DataDog/datadog-agent/pkg/apm/instrumentation"
+	"github.com/DataDog/datadog-agent/pkg/util/kubernetes"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kube-state-metrics/v2/pkg/metric"
@@ -27,7 +32,7 @@ type MetricsStore struct {
 	mutex sync.RWMutex
 	// metrics is a map indexed by Kubernetes object id, containing a slice of
 	// metric families, containing a slice of metrics.
-	metrics map[types.UID][]DDMetricsFam
+	metrics map[types.UID]DDMetricsForUUID
 	// generateMetricsFunc generates metrics based on a given Kubernetes object
 	// and returns them grouped by metric family.
 	generateMetricsFunc func(interface{}) []metric.FamilyInterface
@@ -35,9 +40,17 @@ type MetricsStore struct {
 	MetricsType string
 }
 
+// DDMetricsForUUID contain extra metadata (tags) that we will
+// pass through across runs state accumulation.
+type DDMetricsForUUID struct {
+	List []DDMetricsFam
+	Tags map[string]string
+}
+
 // DDMetric represents the data we care about for a context.
 type DDMetric struct {
 	Labels map[string]string
+	Tags   map[string]string
 	Val    float64
 }
 
@@ -53,7 +66,7 @@ func NewMetricsStore(generateFunc func(interface{}) []metric.FamilyInterface, mt
 	return &MetricsStore{
 		MetricsType:         mt,
 		generateMetricsFunc: generateFunc,
-		metrics:             map[types.UID][]DDMetricsFam{},
+		metrics:             map[types.UID]DDMetricsForUUID{},
 	}
 }
 
@@ -74,6 +87,142 @@ func (d *DDMetricsFam) extract(f metric.Family) {
 	}
 }
 
+// splitMaybeSubscriptedPath checks whether the specified fieldPath is
+// subscripted, and
+//   - if yes, this function splits the fieldPath into path and subscript, and
+//     returns (path, subscript, true).
+//   - if no, this function returns (fieldPath, "", false).
+//
+// Example inputs and outputs:
+//
+//	"metadata.annotations['myKey']" --> ("metadata.annotations", "myKey", true)
+//	"metadata.annotations['a[b]c']" --> ("metadata.annotations", "a[b]c", true)
+//	"metadata.labels['']"           --> ("metadata.labels", "", true)
+//	"metadata.labels"               --> ("metadata.labels", "", false)
+func splitMaybeSubscriptedPath(fieldPath string) (string, string, bool) {
+	if !strings.HasSuffix(fieldPath, "']") {
+		return fieldPath, "", false
+	}
+	s := strings.TrimSuffix(fieldPath, "']")
+	parts := strings.SplitN(s, "['", 2)
+	if len(parts) < 2 {
+		return fieldPath, "", false
+	}
+	if len(parts[0]) == 0 {
+		return fieldPath, "", false
+	}
+	return parts[0], parts[1], true
+}
+
+func extractSingleValueFromPodMeta(
+	pod *corev1.Pod,
+	c instrumentation.TracerConfig,
+) (string, bool, error) {
+	if c.ValueFrom == nil {
+		log.Debug("tracerConfig.ValueFrom is nil")
+		return c.Value, c.Value != "", nil
+	}
+
+	if c.ValueFrom.FieldRef == nil {
+		log.Debug("tracerConfig.ValueFrom.FieldRef is nil")
+		return "", false, nil
+	}
+
+	fieldPath := c.ValueFrom.FieldRef.FieldPath
+	if path, subscript, ok := splitMaybeSubscriptedPath(fieldPath); ok {
+		log.Debugf("found path and subscript: %s | %s", path, subscript)
+		switch path {
+		case "metadata.annotations":
+			value, present := pod.Annotations[subscript]
+			return value, present, nil
+		case "metadata.labels":
+			value, present := pod.Labels[subscript]
+			return value, present, nil
+		default:
+			return "", false, fmt.Errorf("invalid fieldPath with subscript %s", fieldPath)
+		}
+	}
+
+	log.Debugf("split didn't work for fieldPath %s", fieldPath)
+
+	switch fieldPath {
+	case "metadata.name":
+		return pod.Name, true, nil
+	case "metadata.namespace":
+		return pod.Namespace, true, nil
+	case "metadata.uid":
+		return string(pod.GetUID()), true, nil
+	}
+
+	return "", false, fmt.Errorf("unsupported access of fieldPath %s", fieldPath)
+}
+
+func (s *MetricsStore) extractTagsFromInstrumentationTarget(obj any) map[string]string {
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		return nil
+	}
+
+	tJSON, ok := pod.Annotations[instrumentation.AppliedTargetAnnotation]
+	if !ok {
+		return nil
+	}
+
+	var t instrumentation.Target
+	if err := json.NewDecoder(strings.NewReader(tJSON)).Decode(&t); err != nil {
+		log.Warnf("error parsing instrumentation target JSON: %s", err)
+		return nil
+	}
+
+	out := map[string]string{}
+Loop:
+	for _, tc := range t.TracerConfigs {
+		var key string
+		switch tc.Name {
+		case kubernetes.ServiceTagEnvVar:
+			key = "service"
+		case kubernetes.VersionTagEnvVar:
+			key = "version"
+		case kubernetes.EnvTagEnvVar:
+			key = "env"
+		default:
+			continue Loop
+		}
+
+		value, extracted, err := extractSingleValueFromPodMeta(pod, tc)
+		if err != nil {
+			log.Warnf("Error parsing value workload data from pod metadata for env %s: %s", tc.Name, err)
+		} else if extracted {
+			out[key] = value
+		}
+	}
+
+	log.Debugf("found some tags %+v for pod %s/%s", out, pod.GetNamespace(), pod.GetName())
+	return out
+}
+
+func (s *MetricsStore) createDDMetrics(obj interface{}) DDMetricsForUUID {
+	metricsForUID := s.generateMetricsFunc(obj)
+	convertedMetricsForUID := make([]DDMetricsFam, len(metricsForUID))
+	for i, f := range metricsForUID {
+		metricConvertedList := DDMetricsFam{
+			// Used to build a map to easily identify
+			// the Object associated with the metrics
+			Type: s.MetricsType,
+		}
+		f.Inspect(metricConvertedList.extract)
+		convertedMetricsForUID[i] = metricConvertedList
+	}
+
+	// We need to keep the store with UID as a key to handle
+	// the lifecycle of the objects and the metrics attached.
+	tags := s.extractTagsFromInstrumentationTarget(obj)
+	return DDMetricsForUUID{
+		List: convertedMetricsForUID,
+		Tags: tags,
+	}
+}
+
 // Add inserts adds to the MetricsStore by calling the metrics generator functions and
 // adding the generated metrics to the metrics map that underlies the MetricStore.
 // Implementing k8s.io/client-go/tools/cache.Store interface
@@ -83,19 +232,12 @@ func (s *MetricsStore) Add(obj interface{}) error {
 		return err
 	}
 
-	metricsForUID := s.generateMetricsFunc(obj)
-	convertedMetricsForUID := make([]DDMetricsFam, len(metricsForUID))
-	for i, f := range metricsForUID {
-		metricConvertedList := DDMetricsFam{
-			// Used to build a map to easily identify the Object associated with the metrics
-			Type: s.MetricsType,
-		}
-		f.Inspect(metricConvertedList.extract)
-		convertedMetricsForUID[i] = metricConvertedList
-	}
-	// We need to keep the store with UID as a key to handle the lifecycle of the objects and the metrics attached.
+	ms := s.createDDMetrics(obj)
+
+	// We need to keep the store with UID as a key to handle
+	// the lifecycle of the objects and the metrics attached.
 	s.mutex.Lock()
-	s.metrics[o.GetUID()] = convertedMetricsForUID
+	s.metrics[o.GetUID()] = ms
 	s.mutex.Unlock()
 
 	return nil
@@ -114,8 +256,35 @@ func buildTags(metrics *metric.Metric) (map[string]string, error) {
 
 // Update updates the existing entry in the MetricsStore by overriding it.
 func (s *MetricsStore) Update(obj interface{}) error {
-	// TODO: For now, just call Add, in the future one could check if the resource version changed?
-	return s.Add(obj)
+	o, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	id := o.GetUID()
+	metrics := s.createDDMetrics(obj)
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	existing, exists := s.metrics[id]
+	if exists {
+		if metrics.Tags == nil {
+			metrics.Tags = existing.Tags
+		} else if len(existing.Tags) > 0 {
+			for k, v := range existing.Tags {
+				if _, keySet := metrics.Tags[k]; !keySet {
+					metrics.Tags[k] = v
+				}
+			}
+		}
+	}
+
+	if len(metrics.Tags) > 0 {
+		log.Debugf("metrics have tags: %+v", metrics.Tags)
+	}
+	s.metrics[id] = metrics
+	return nil
 }
 
 // Delete deletes an existing entry in the MetricsStore.
@@ -157,7 +326,7 @@ func (s *MetricsStore) GetByKey(_ string) (item interface{}, exists bool, err er
 // given list.
 func (s *MetricsStore) Replace(list []interface{}, _ string) error {
 	s.mutex.Lock()
-	s.metrics = map[types.UID][]DDMetricsFam{}
+	s.metrics = map[types.UID]DDMetricsForUUID{}
 	s.mutex.Unlock()
 
 	for _, o := range list {
@@ -196,9 +365,8 @@ func (s *MetricsStore) Push(familyFilter FamilyAllow, metricFilter MetricAllow) 
 	defer s.mutex.RUnlock()
 
 	mRes := make(map[string][]DDMetricsFam)
-
 	for _, metricFamList := range s.metrics {
-		for _, metricFam := range metricFamList {
+		for _, metricFam := range metricFamList.List {
 			if !familyFilter(metricFam) {
 				continue
 			}
@@ -210,7 +378,11 @@ func (s *MetricsStore) Push(familyFilter FamilyAllow, metricFilter MetricAllow) 
 				resMetric = append(resMetric, DDMetric{
 					Val:    metric.Val,
 					Labels: metric.Labels,
+					Tags:   metricFamList.Tags,
 				})
+			}
+			if len(metricFamList.Tags) > 0 {
+				log.Debugf("added fam_name=%s type=%s tags=%s", metricFam.Name, metricFam.Type, metricFamList.Tags)
 			}
 			mRes[metricFam.Name] = append(mRes[metricFam.Name], DDMetricsFam{
 				ListMetrics: resMetric,
@@ -219,5 +391,6 @@ func (s *MetricsStore) Push(familyFilter FamilyAllow, metricFilter MetricAllow) 
 			})
 		}
 	}
+
 	return mRes
 }
