@@ -69,6 +69,7 @@ func (s *RedisSuite) TestFormatRedisStats() {
 					Count:              2,
 				},
 				"ERR": {
+
 					FirstLatencySample: 1,
 					Count:              2,
 				},

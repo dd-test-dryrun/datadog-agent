@@ -69,7 +69,7 @@ func (e *EventWrapper) KeyName() string {
 // CommandType returns the command type of the query
 func (e *EventWrapper) CommandType() CommandType {
 	if !e.commandSet {
-		e.command = CommandType(e.Tx.Command)
+		e.command = fromEbpfCommandType(e.Tx.Command)
 		e.commandSet = true
 	}
 	return e.command
@@ -187,5 +187,16 @@ func fromEbpfErrorType(e errorType) RedisErrorType {
 		return RedisErrDeprecated
 	default:
 		return RedisErrUnknown
+	}
+}
+
+func fromEbpfCommandType(c commandType) CommandType {
+	switch c {
+	case getCommand:
+		return GetCommand
+	case setCommand:
+		return SetCommand
+	default:
+		return UnknownCommand
 	}
 }

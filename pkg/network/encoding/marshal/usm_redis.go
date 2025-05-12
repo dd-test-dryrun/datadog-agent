@@ -79,8 +79,7 @@ func (e *redisEncoder) encodeData(connectionData *USMConnectionData[redis.Key, *
 					aggregationBuilder.AddErrorToStats(func(errorToStatsBuilder *model.RedisStats_ErrorToStatsEntryBuilder) {
 						if err == "" {
 							errorToStatsBuilder.SetKey(int32(model.RedisErrorType_RedisNoError))
-						} else if err == ""
-						else {
+						} else if err == "" {
 							errorToStatsBuilder.SetKey(int32(model.RedisErrorType_RedisErrorTypeUnknown))
 						}
 						errorToStatsBuilder.SetValue(func(statsBuilder *model.RedisStatsEntryBuilder) {
