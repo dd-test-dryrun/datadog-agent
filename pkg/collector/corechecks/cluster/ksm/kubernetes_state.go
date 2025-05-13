@@ -704,7 +704,7 @@ func (k *KSMCheck) processMetrics(sender sender.Sender, metrics map[string][]ksm
 			if ddname, found := k.metricNamesMapper[metricFamily.Name]; found {
 				lMapperOverride := labelsMapperOverride(metricFamily.Name)
 				for _, m := range metricFamily.ListMetrics {
-					log.Debugf("tags=%v metric=%s original=%s", m.Tags, ddname, metricFamily.Name, lMapperOverride)
+					log.Debugf("tags=%v metric=%s original=%s labels=%v", m.Tags, ddname, metricFamily.Name, m.Labels)
 					hostname, tagList := k.hostnameAndTags(m.Labels, m.Tags, labelJoiner, lMapperOverride)
 					sender.Gauge(metricPrefix+ddname, m.Val, hostname, tagList)
 				}
@@ -738,7 +738,6 @@ func (k *KSMCheck) hostnameAndTags(labels, tags map[string]string, labelJoiner *
 	hostname := ""
 
 	labelsToAdd := labelJoiner.getLabelsToAdd(labels)
-	log.Debugf("labelsToAdd in %v out %v", labels, labelsToAdd)
 
 	// generate a dedicated tags slice
 	tagList := make([]string, 0, len(labels)+len(labelsToAdd)+len(tags))
@@ -783,24 +782,13 @@ func (k *KSMCheck) hostnameAndTags(labels, tags map[string]string, labelJoiner *
 		}
 	}
 
-	var isMyThing bool
 	if owners := ownerTags(ownerKind, ownerName); len(owners) != 0 {
-		for _, o := range owners {
-			if o == "kube_deployment:python_named" {
-				isMyThing = true
-				break
-			}
-		}
 		tagList = append(tagList, owners...)
 	}
 
-	if isMyThing {
-		log.Debugf("are there even tags??? %+v", tags)
-	}
-
 	for key, value := range tags {
-		log.Debugf("added %s=%v to labels %+v", key, value, labels)
 		tagList = append(tagList, fmt.Sprintf("%s:%s", key, value))
+		log.Debugf("added %s=%v to labels %+v-- %+v", key, value, labels, tagList)
 	}
 
 	return hostname, tagList

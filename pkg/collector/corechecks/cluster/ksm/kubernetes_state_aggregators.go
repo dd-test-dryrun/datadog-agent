@@ -35,6 +35,7 @@ type counterAggregator struct {
 	allowedLabels []string
 
 	accumulator map[[maxNumberOfAllowedLabels]string]float64
+	tags        map[[maxNumberOfAllowedLabels]string]map[string]string
 }
 
 type sumValuesAggregator struct {
@@ -170,6 +171,17 @@ func (a *countObjectsAggregator) accumulate(metric ksmstore.DDMetric) {
 	}
 
 	a.accumulator[labelValues]++
+
+	tags, found := a.tags[labelValues]
+	if !found {
+		tags = metric.Tags
+	} else {
+		for k, v := range metric.Tags {
+			tags[k] = v
+		}
+	}
+
+	a.tags[labelValues] = tags
 }
 
 func (a *resourceAggregator) accumulate(metric ksmstore.DDMetric) {
@@ -246,7 +258,7 @@ func (a *counterAggregator) flush(sender sender.Sender, k *KSMCheck, labelJoiner
 			labels[allowedLabel] = labelValues[i]
 		}
 
-		hostname, tags := k.hostnameAndTags(labels, nil, labelJoiner, labelsMapperOverride(a.ksmMetricName))
+		hostname, tags := k.hostnameAndTags(labels, a.tags[labelValues], labelJoiner, labelsMapperOverride(a.ksmMetricName))
 
 		sender.Gauge(ksmMetricPrefix+a.ddMetricName, count, hostname, tags)
 	}
