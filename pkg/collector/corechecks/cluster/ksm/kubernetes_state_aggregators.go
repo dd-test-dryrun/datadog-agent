@@ -94,6 +94,7 @@ func newSumValuesAggregator(ddMetricName, ksmMetricName string, allowedLabels []
 			ksmMetricName: ksmMetricName,
 			allowedLabels: allowedLabels,
 			accumulator:   make(map[[maxNumberOfAllowedLabels]string]float64),
+			tags:          make(map[[maxNumberOfAllowedLabels]string]map[string]string),
 		},
 	}
 }
@@ -112,6 +113,7 @@ func newCountObjectsAggregator(ddMetricName, ksmMetricName string, allowedLabels
 			ksmMetricName: ksmMetricName,
 			allowedLabels: allowedLabels,
 			accumulator:   make(map[[maxNumberOfAllowedLabels]string]float64),
+			tags:          make(map[[maxNumberOfAllowedLabels]string]map[string]string),
 		},
 	}
 }
