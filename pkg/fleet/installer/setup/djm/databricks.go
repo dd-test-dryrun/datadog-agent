@@ -110,7 +110,7 @@ func SetupDatabricks(s *common.Setup) error {
 		}
 		tracerEnvConfigEmr = append(tracerEnvConfigDatabricks, debugLogs)
 	}
-	//s.Config.InjectTracerYAML.AdditionalEnvironmentVariables = tracerEnvConfigDatabricks
+	s.Config.InjectTracerYAML.AdditionalEnvironmentVariables = tracerEnvConfigDatabricks
 
 	setupCommonHostTags(s)
 	installMethod := "manual"
@@ -246,8 +246,6 @@ func setupDatabricksDriver(s *common.Setup) {
 }
 
 func setupDatabricksWorker(s *common.Setup) {
-	s.Packages.Install(common.DatadogAPMInjectPackage, databricksInjectorVersion)
-	s.Config.InjectTracerYAML.AdditionalEnvironmentVariables = tracerEnvConfigDatabricks
 	setClearHostTag(s, "spark_node", "worker")
 
 	if os.Getenv("WORKER_LOGS_ENABLED") == "true" {
@@ -257,7 +255,6 @@ func setupDatabricksWorker(s *common.Setup) {
 		s.Span.SetTag("host_tag_set.worker_logs_enabled", "true")
 		s.Config.IntegrationConfigs["spark.d/databricks.yaml"] = sparkIntegration
 	}
-
 }
 
 func addCustomHostTags(s *common.Setup) {
