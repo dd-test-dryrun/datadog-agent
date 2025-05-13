@@ -9,3 +9,5 @@ PID=$!
 disown $PID
 
 timeout 30s bash -c 'while ! curl -s http://localhost:8080 > /dev/null; do sleep 1; done'
+
+cat /tmp/server.log
