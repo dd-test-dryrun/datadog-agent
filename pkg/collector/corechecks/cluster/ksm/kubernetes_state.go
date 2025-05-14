@@ -788,7 +788,6 @@ func (k *KSMCheck) hostnameAndTags(labels, tags map[string]string, labelJoiner *
 
 	for key, value := range tags {
 		tagList = append(tagList, fmt.Sprintf("%s:%s", key, value))
-		log.Debugf("added %s=%v to labels %+v-- %+v", key, value, labels, tagList)
 	}
 
 	return hostname, tagList

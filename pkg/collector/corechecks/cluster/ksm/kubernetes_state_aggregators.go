@@ -29,13 +29,15 @@ type metricAggregator interface {
 // in the code and cannot be arbitrarily set by the end-user.
 const maxNumberOfAllowedLabels = 4
 
+type aggregatorKey = [maxNumberOfAllowedLabels]string
+
 type counterAggregator struct {
 	ddMetricName  string
 	ksmMetricName string
 	allowedLabels []string
 
-	accumulator map[[maxNumberOfAllowedLabels]string]float64
-	tags        map[[maxNumberOfAllowedLabels]string]map[string]string
+	accumulator map[aggregatorKey]float64
+	tags        map[aggregatorKey]map[string]string
 }
 
 type sumValuesAggregator struct {
@@ -55,7 +57,7 @@ type resourceAggregator struct {
 	allowedLabels    []string
 	allowedResources []string
 
-	accumulators map[string]map[[maxNumberOfAllowedLabels]string]float64
+	accumulators map[string]map[aggregatorKey]float64
 }
 
 type cronJob struct {
@@ -93,8 +95,8 @@ func newSumValuesAggregator(ddMetricName, ksmMetricName string, allowedLabels []
 			ddMetricName:  ddMetricName,
 			ksmMetricName: ksmMetricName,
 			allowedLabels: allowedLabels,
-			accumulator:   make(map[[maxNumberOfAllowedLabels]string]float64),
-			tags:          make(map[[maxNumberOfAllowedLabels]string]map[string]string),
+			accumulator:   make(map[aggregatorKey]float64),
+			tags:          make(map[aggregatorKey]map[string]string),
 		},
 	}
 }
@@ -112,8 +114,8 @@ func newCountObjectsAggregator(ddMetricName, ksmMetricName string, allowedLabels
 			ddMetricName:  ddMetricName,
 			ksmMetricName: ksmMetricName,
 			allowedLabels: allowedLabels,
-			accumulator:   make(map[[maxNumberOfAllowedLabels]string]float64),
-			tags:          make(map[[maxNumberOfAllowedLabels]string]map[string]string),
+			accumulator:   make(map[aggregatorKey]float64),
+			tags:          make(map[aggregatorKey]map[string]string),
 		},
 	}
 }
@@ -126,9 +128,11 @@ func newResourceValuesAggregator(ddMetricPrefix, ddMetricSuffix, ksmMetricName s
 		return nil
 	}
 
-	accumulators := make(map[string]map[[maxNumberOfAllowedLabels]string]float64)
+	accumulators := make(map[string]map[aggregatorKey]float64)
+	tags := make(map[string]map[aggregatorKey]map[string]string)
 	for _, allowedResource := range allowedResources {
-		accumulators[allowedResource] = make(map[[maxNumberOfAllowedLabels]string]float64)
+		accumulators[allowedResource] = make(map[aggregatorKey]float64)
+		tags[allowedResource] = make(map[aggregatorKey]map[string]string)
 	}
 
 	return &resourceAggregator{
@@ -265,7 +269,8 @@ func (a *counterAggregator) flush(sender sender.Sender, k *KSMCheck, labelJoiner
 		sender.Gauge(ksmMetricPrefix+a.ddMetricName, count, hostname, tags)
 	}
 
-	a.accumulator = make(map[[maxNumberOfAllowedLabels]string]float64)
+	a.accumulator = make(map[aggregatorKey]float64)
+	a.tags = make(map[aggregatorKey]map[string]string)
 }
 
 func (a *resourceAggregator) flush(sender sender.Sender, k *KSMCheck, labelJoiner *labelJoiner) {
