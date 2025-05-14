@@ -38,7 +38,7 @@ func NewKey(saddr, daddr util.Address, sport, dport uint16, command CommandType,
 // We include the error here and not in the Key to avoid duplicating keys when we observe both successful and
 // erroneous transactions for the same key.
 type RequestStats struct {
-	ErrorToStats map[string]*RequestStat
+	ErrorToStats map[RedisErrorType]*RequestStat
 }
 
 // RequestStat represents a group of Redis transactions stats.
@@ -53,7 +53,7 @@ type RequestStat struct {
 // NewRequestStats creates a new RequestStats object.
 func NewRequestStats() *RequestStats {
 	return &RequestStats{
-		ErrorToStats: make(map[string]*RequestStat),
+		ErrorToStats: make(map[RedisErrorType]*RequestStat),
 	}
 }
 
@@ -89,7 +89,7 @@ func (r *RequestStats) CombineWith(newStats *RequestStats) {
 }
 
 // mergeRequests adds a RequestStat to the given RequestStats. Only called when newStats has Latencies.
-func (r *RequestStats) mergeRequests(err string, newStats *RequestStat) {
+func (r *RequestStats) mergeRequests(err RedisErrorType, newStats *RequestStat) {
 	stats, exists := r.ErrorToStats[err]
 	if !exists {
 		stats = &RequestStat{}
@@ -117,7 +117,7 @@ func (r *RequestStats) mergeRequests(err string, newStats *RequestStat) {
 }
 
 // AddRequest adds information about a Redis transaction to the request stats
-func (r *RequestStats) AddRequest(err string, count int, staticTags uint64, latency float64) {
+func (r *RequestStats) AddRequest(err RedisErrorType, count int, staticTags uint64, latency float64) {
 	stats, exists := r.ErrorToStats[err]
 	if !exists {
 		stats = &RequestStat{}

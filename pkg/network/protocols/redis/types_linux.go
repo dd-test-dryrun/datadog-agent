@@ -18,8 +18,8 @@ type ConnTuple = struct {
 type commandType = uint8
 
 var (
-	getCommand = CommandType(0x0)
-	getCommand = CommandType(0x1)
+	getCommand = commandType(0x0)
+	setCommand = commandType(0x1)
 )
 
 type EbpfEvent struct {

@@ -110,18 +110,6 @@ func (e *EventWrapper) String() string {
 	return output.String()
 }
 
-// String returns a string representation of Command
-func (c CommandType) String() string {
-	switch c {
-	case GetCommand:
-		return "GET"
-	case SetCommand:
-		return "SET"
-	default:
-		return "UNKNOWN"
-	}
-}
-
 func fromEbpfErrorType(e errorType) RedisErrorType {
 	// Map kernel-space error types to user-space RedisErrorType
 	switch e {
