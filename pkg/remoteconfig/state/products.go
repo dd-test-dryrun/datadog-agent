@@ -35,6 +35,7 @@ var validProducts = map[string]struct{}{
 	ProductOrchestratorK8sCRDs:          {},
 	ProductHaAgent:                      {},
 	ProductNDMDeviceProfilesCustom:      {},
+	ProductBTFDD:                        {},
 }
 
 const (
@@ -96,4 +97,6 @@ const (
 	ProductHaAgent = "HA_AGENT"
 	// ProductNDMDeviceProfilesCustom receives user-created SNMP profiles for network device monitoring
 	ProductNDMDeviceProfilesCustom = "NDM_DEVICE_PROFILES_CUSTOM"
+	// ProductBTFDD accesses a BTF catalog used when the kernel is newer than the system-probe has bundled support for
+	ProductBTFDD = "BTF_DD"
 )
