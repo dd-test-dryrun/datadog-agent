@@ -111,8 +111,8 @@ func populateConfig(config config.Component) map[string]string {
 
 	conf["fips_proxy_enabled"] = "false"
 	// We should not print the FIPS Proxy status if the agent is a FIPS agent
-	is_fips_agent, _ := fips.Enabled()
-	if config.GetBool("fips.enabled") && !is_fips_agent {
+	isFipsAgent, _ := fips.Enabled()
+	if config.GetBool("fips.enabled") && !isFipsAgent {
 		conf["fips_proxy_enabled"] = "true"
 	}
 	conf["fips_local_address"] = config.GetString("fips.local_address")
