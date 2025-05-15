@@ -16,7 +16,6 @@ import (
 
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/cluster/orchestrator/processors"
 	"github.com/DataDog/datadog-agent/pkg/collector/corechecks/cluster/orchestrator/transformers"
-
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 
 	model "github.com/DataDog/agent-payload/v5/process"
@@ -94,7 +93,7 @@ func ExtractPod(ctx processors.ProcessorContext, p *corev1.Pod, tagProvider func
 		providedTags = tagProvider(p)
 	}
 	if len(providedTags) > 0 {
-		log.Debug("with more provided tags: %+v", providedTags)
+		log.Debugf("with more provided tags: %+v", providedTags)
 		podModel.Tags = append(podModel.Tags, providedTags...)
 	}
 

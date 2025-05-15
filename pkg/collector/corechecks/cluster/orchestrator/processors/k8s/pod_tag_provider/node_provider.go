@@ -12,8 +12,6 @@ import (
 
 	tagger "github.com/DataDog/datadog-agent/comp/core/tagger/def"
 	taggertypes "github.com/DataDog/datadog-agent/comp/core/tagger/types"
-
-	"github.com/DataDog/datadog-agent/pkg/util/log"
 )
 
 type nodePodTagProvider struct {
@@ -38,8 +36,6 @@ func (p *nodePodTagProvider) GetTags(pod *corev1.Pod, cardinality taggertypes.Ta
 	if err != nil {
 		return tags, nil
 	}
-
-	log.Debugf("XXX tags? %+v", stags)
 
 	return append(tags, stags...), nil
 }
