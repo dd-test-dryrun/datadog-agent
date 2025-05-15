@@ -66,7 +66,7 @@ func ExtractDeployment(ctx processors.ProcessorContext, d *appsv1.Deployment, ta
 	}
 	if len(providedTags) > 0 {
 		log.Debugf("with more tags added to deployment: %+v", providedTags)
-		deploy.Tags = append(deploy.Tags, providedTags)
+		deploy.Tags = append(deploy.Tags, providedTags...)
 	}
 
 	deploy.Tags = append(deploy.Tags, transformers.RetrieveUnifiedServiceTags(d.ObjectMeta.Labels)...)
