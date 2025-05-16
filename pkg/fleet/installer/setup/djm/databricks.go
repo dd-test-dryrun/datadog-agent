@@ -307,12 +307,14 @@ func loadLogProcessingRules(s *common.Setup) {
 
 // ClusterTags represents the response from Databricks API for cluster tags
 type ClusterTags struct {
-	Tags map[string]string `json:"tags"`
+	CustomTags map[string]string `json:"custom_tags"`
 }
 
 // JobTags represents the response from Databricks API for job tags
 type JobTags struct {
-	Tags map[string]string `json:"tags"`
+	Settings struct {
+		Tags map[string]string `json:"tags"`
+	} `json:"settings"`
 }
 
 // fetchDatabricksCustomTags fetches custom tags from Databricks API and adds them to Datadog YAML config
@@ -370,7 +372,7 @@ func fetchClusterTags(client *http.Client, host, token, clusterID string) (map[s
 	reqBody := fmt.Sprintf(`{"cluster_id": "%s"}`, clusterID)
 
 	// Create request
-	req, err := http.NewRequest("GET", url, strings.NewReader(reqBody))
+	req, err := http.NewRequest("POST", url, strings.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -404,19 +406,16 @@ func fetchClusterTags(client *http.Client, host, token, clusterID string) (map[s
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	return clusterResponse.Tags, nil
+	return clusterResponse.CustomTags, nil
 }
 
 // fetchJobTags fetches custom tags for a job from Databricks API
 func fetchJobTags(client *http.Client, host, token, jobID string) (map[string]string, error) {
-	// Construct API URL for job tags
-	url := fmt.Sprintf("%s/api/2.1/jobs/get", host)
-
-	// Create request body
-	reqBody := fmt.Sprintf(`{"job_id": %s}`, jobID)
+	// Construct API URL for job tags with job_id as query parameter
+	url := fmt.Sprintf("%s/api/2.1/jobs/get?job_id=%s", host, jobID)
 
 	// Create request
-	req, err := http.NewRequest("GET", url, strings.NewReader(reqBody))
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -450,7 +449,7 @@ func fetchJobTags(client *http.Client, host, token, jobID string) (map[string]st
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	return jobResponse.Tags, nil
+	return jobResponse.Settings.Tags, nil
 }
 
 // addTagsToConfig adds tags from a map to the Datadog YAML config
