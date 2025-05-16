@@ -10,7 +10,6 @@ package kubelet
 
 import (
 	"context"
-	"encoding/json"
 	stdErrors "errors"
 	"slices"
 	"strings"
