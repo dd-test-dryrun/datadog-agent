@@ -704,7 +704,6 @@ func (k *KSMCheck) processMetrics(sender sender.Sender, metrics map[string][]ksm
 			if ddname, found := k.metricNamesMapper[metricFamily.Name]; found {
 				lMapperOverride := labelsMapperOverride(metricFamily.Name)
 				for _, m := range metricFamily.ListMetrics {
-					log.Debugf("tags=%v metric=%s original=%s labels=%v", m.Tags, ddname, metricFamily.Name, m.Labels)
 					hostname, tagList := k.hostnameAndTags(m.Labels, m.Tags, labelJoiner, lMapperOverride)
 					sender.Gauge(metricPrefix+ddname, m.Val, hostname, tagList)
 				}

@@ -16,6 +16,7 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/apm/instrumentation"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/types"
@@ -82,12 +83,7 @@ func (d *DDMetricsFam) extract(f metric.Family) {
 	}
 }
 
-func (s *MetricsStore) extractTagsFromInstrumentationTarget(obj any) map[string]string {
-	pod, ok := obj.(*corev1.Pod)
-	if !ok {
-		return nil
-	}
-
+func (s *MetricsStore) extractTagsFromInstrumentationTarget(pod *corev1.Pod) map[string]string {
 	tags, err := instrumentation.ExtractTagsFromPodMeta(pod.ObjectMeta)
 	if err != nil {
 		log.Warnf("error extracting tags: %v", err)
@@ -100,6 +96,7 @@ func (s *MetricsStore) extractTagsFromInstrumentationTarget(obj any) map[string]
 func (s *MetricsStore) createDDMetrics(obj interface{}) ([]DDMetricsFam, map[string]string) {
 	metricsForUID := s.generateMetricsFunc(obj)
 	convertedMetricsForUID := make([]DDMetricsFam, len(metricsForUID))
+
 	for i, f := range metricsForUID {
 		metricConvertedList := DDMetricsFam{
 			// Used to build a map to easily identify
@@ -110,7 +107,15 @@ func (s *MetricsStore) createDDMetrics(obj interface{}) ([]DDMetricsFam, map[str
 		convertedMetricsForUID[i] = metricConvertedList
 	}
 
-	return convertedMetricsForUID, s.extractTagsFromInstrumentationTarget(obj)
+	var tags map[string]string
+	switch v := obj.(type) {
+	case *corev1.Pod:
+		tags = s.extractTagsFromInstrumentationTarget(v)
+	case *appsv1.Deployment:
+		// ???
+	}
+
+	return convertedMetricsForUID, tags
 }
 
 // Add inserts adds to the MetricsStore by calling the metrics generator functions and
@@ -128,8 +133,24 @@ func (s *MetricsStore) Add(obj interface{}) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	// we merge/overwrite tags with new tags
-	// keeping older ones for the UID
+	s.metrics[id] = metrics
+
+	tags := s.mergedTagsForID(id, newTags)
+	s.tags[id] = tags
+
+	// this means we can hypothetically propagate the UST tags
+	// we find up to the owner from Pod -> ReplicaSet -> Deployment.
+	// by virtue of the the ID parent reference.
+	for _, owner := range o.GetOwnerReferences() {
+		s.tags[owner.UID] = s.mergedTagsForID(owner.UID, tags)
+	}
+
+	return nil
+}
+
+// mergedTagsForID should be called within an aquired lock, does not do
+// writing!
+func (s *MetricsStore) mergedTagsForID(id types.UID, newTags map[string]string) map[string]string {
 	tags, tagsSet := s.tags[id]
 	if !tagsSet {
 		tags = newTags
@@ -139,9 +160,7 @@ func (s *MetricsStore) Add(obj interface{}) error {
 		}
 	}
 
-	s.metrics[id] = metrics
-	s.tags[id] = tags
-	return nil
+	return tags
 }
 
 func buildTags(metrics *metric.Metric) (map[string]string, error) {
