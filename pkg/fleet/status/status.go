@@ -38,7 +38,6 @@ func Module() fxutil.Module {
 
 type statusProvider struct {
 	Config config.Component
-
 }
 
 func newStatus(deps dependencies) provides {
@@ -86,7 +85,6 @@ func (sp statusProvider) HTML(_ bool, buffer io.Writer) error {
 
 func (sp statusProvider) populateStatus(stats map[string]interface{}) {
 	status := make(map[string]interface{})
-
 
 	status["remoteManagementEnabled"] = isRemoteManagementEnabled(sp.Config)
 	stats["fleetAutomationStatus"] = status
