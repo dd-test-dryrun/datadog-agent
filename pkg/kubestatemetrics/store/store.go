@@ -10,13 +10,10 @@
 package store
 
 import (
-	"encoding/json"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/DataDog/datadog-agent/pkg/apm/instrumentation"
-	"github.com/DataDog/datadog-agent/pkg/util/kubernetes"
 	"github.com/DataDog/datadog-agent/pkg/util/log"
 
 	corev1 "k8s.io/api/core/v1"
@@ -64,6 +61,7 @@ func NewMetricsStore(generateFunc func(interface{}) []metric.FamilyInterface, mt
 		MetricsType:         mt,
 		generateMetricsFunc: generateFunc,
 		metrics:             map[types.UID][]DDMetricsFam{},
+		tags:                map[types.UID]map[string]string{},
 	}
 }
 
@@ -84,124 +82,24 @@ func (d *DDMetricsFam) extract(f metric.Family) {
 	}
 }
 
-// splitMaybeSubscriptedPath checks whether the specified fieldPath is
-// subscripted, and
-//   - if yes, this function splits the fieldPath into path and subscript, and
-//     returns (path, subscript, true).
-//   - if no, this function returns (fieldPath, "", false).
-//
-// Example inputs and outputs:
-//
-//	"metadata.annotations['myKey']" --> ("metadata.annotations", "myKey", true)
-//	"metadata.annotations['a[b]c']" --> ("metadata.annotations", "a[b]c", true)
-//	"metadata.labels['']"           --> ("metadata.labels", "", true)
-//	"metadata.labels"               --> ("metadata.labels", "", false)
-func splitMaybeSubscriptedPath(fieldPath string) (string, string, bool) {
-	if !strings.HasSuffix(fieldPath, "']") {
-		return fieldPath, "", false
-	}
-	s := strings.TrimSuffix(fieldPath, "']")
-	parts := strings.SplitN(s, "['", 2)
-	if len(parts) < 2 {
-		return fieldPath, "", false
-	}
-	if len(parts[0]) == 0 {
-		return fieldPath, "", false
-	}
-	return parts[0], parts[1], true
-}
-
-func extractSingleValueFromPodMeta(
-	pod *corev1.Pod,
-	c instrumentation.TracerConfig,
-) (string, bool, error) {
-	if c.ValueFrom == nil {
-		log.Debug("tracerConfig.ValueFrom is nil")
-		return c.Value, c.Value != "", nil
-	}
-
-	if c.ValueFrom.FieldRef == nil {
-		log.Debug("tracerConfig.ValueFrom.FieldRef is nil")
-		return "", false, nil
-	}
-
-	fieldPath := c.ValueFrom.FieldRef.FieldPath
-	if path, subscript, ok := splitMaybeSubscriptedPath(fieldPath); ok {
-		log.Debugf("found path and subscript: %s | %s", path, subscript)
-		switch path {
-		case "metadata.annotations":
-			value, present := pod.Annotations[subscript]
-			return value, present, nil
-		case "metadata.labels":
-			value, present := pod.Labels[subscript]
-			return value, present, nil
-		default:
-			return "", false, fmt.Errorf("invalid fieldPath with subscript %s", fieldPath)
-		}
-	}
-
-	log.Debugf("split didn't work for fieldPath %s", fieldPath)
-
-	switch fieldPath {
-	case "metadata.name":
-		return pod.Name, true, nil
-	case "metadata.namespace":
-		return pod.Namespace, true, nil
-	case "metadata.uid":
-		return string(pod.GetUID()), true, nil
-	}
-
-	return "", false, fmt.Errorf("unsupported access of fieldPath %s", fieldPath)
-}
-
 func (s *MetricsStore) extractTagsFromInstrumentationTarget(obj any) map[string]string {
 	pod, ok := obj.(*corev1.Pod)
 	if !ok {
 		return nil
 	}
 
-	tJSON, ok := pod.Annotations[instrumentation.AppliedTargetAnnotation]
-	if !ok {
+	tags, err := instrumentation.ExtractTagsFromPodMeta(pod.ObjectMeta)
+	if err != nil {
+		log.Warnf("error extracting tags: %v", err)
 		return nil
 	}
 
-	var t instrumentation.Target
-	if err := json.NewDecoder(strings.NewReader(tJSON)).Decode(&t); err != nil {
-		log.Warnf("error parsing instrumentation target JSON: %s", err)
-		return nil
-	}
-
-	out := map[string]string{}
-Loop:
-	for _, tc := range t.TracerConfigs {
-		var key string
-		switch tc.Name {
-		case kubernetes.ServiceTagEnvVar:
-			key = "service"
-		case kubernetes.VersionTagEnvVar:
-			key = "version"
-		case kubernetes.EnvTagEnvVar:
-			key = "env"
-		default:
-			continue Loop
-		}
-
-		value, extracted, err := extractSingleValueFromPodMeta(pod, tc)
-		if err != nil {
-			log.Warnf("Error parsing value workload data from pod metadata for env %s: %s", tc.Name, err)
-		} else if extracted {
-			out[key] = value
-		}
-	}
-
-	log.Debugf("found some tags %+v for pod %s/%s", out, pod.GetNamespace(), pod.GetName())
-	return out
+	return tags.AsMap()
 }
 
 func (s *MetricsStore) createDDMetrics(obj interface{}) ([]DDMetricsFam, map[string]string) {
 	metricsForUID := s.generateMetricsFunc(obj)
 	convertedMetricsForUID := make([]DDMetricsFam, len(metricsForUID))
-	tags := s.extractTagsFromInstrumentationTarget(obj)
 	for i, f := range metricsForUID {
 		metricConvertedList := DDMetricsFam{
 			// Used to build a map to easily identify
@@ -212,7 +110,7 @@ func (s *MetricsStore) createDDMetrics(obj interface{}) ([]DDMetricsFam, map[str
 		convertedMetricsForUID[i] = metricConvertedList
 	}
 
-	return convertedMetricsForUID, tags
+	return convertedMetricsForUID, s.extractTagsFromInstrumentationTarget(obj)
 }
 
 // Add inserts adds to the MetricsStore by calling the metrics generator functions and
