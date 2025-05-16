@@ -59,6 +59,7 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/config/model"
 	commonsettings "github.com/DataDog/datadog-agent/pkg/config/settings"
 	pkgconfigsetup "github.com/DataDog/datadog-agent/pkg/config/setup"
+	fleetstatus "github.com/DataDog/datadog-agent/pkg/fleet/status"
 	"github.com/DataDog/datadog-agent/pkg/process/metadata/workloadmeta/collector"
 	"github.com/DataDog/datadog-agent/pkg/process/util"
 	proccontainers "github.com/DataDog/datadog-agent/pkg/process/util/containers"
@@ -138,6 +139,8 @@ func runApp(ctx context.Context, globalParams *GlobalParams) error {
 
 		// Provides the rdnssquerier module
 		rdnsquerierfx.Module(),
+
+		fleetstatus.Module(),
 
 		// Provide network path bundle
 		networkpath.Bundle(),
