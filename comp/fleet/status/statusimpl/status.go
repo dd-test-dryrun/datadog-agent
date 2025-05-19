@@ -3,7 +3,7 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2016-present Datadog, Inc.
 
-package fleetstatusimpl //nolint:revive // TODO(Fleet) Fix revive linter
+package statusimpl //nolint:revive // TODO(Fleet) Fix revive linter
 
 import (
 	"embed"

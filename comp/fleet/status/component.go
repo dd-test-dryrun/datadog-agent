@@ -4,7 +4,7 @@
 // Copyright 2016-present Datadog, Inc.
 
 // Package status implements the core status component information provider interface
-package fleetstatus
+package status
 
 // team: fleet
 
