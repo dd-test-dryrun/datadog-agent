@@ -33,7 +33,7 @@ import (
 	agenttelemetry "github.com/DataDog/datadog-agent/comp/core/agenttelemetry/def"
 	agenttelemetryfx "github.com/DataDog/datadog-agent/comp/core/agenttelemetry/fx"
 
-	statusimpl1 "github.com/DataDog/datadog-agent/comp/fleet/status/statusimpl"
+	fleetstatusimpl "github.com/DataDog/datadog-agent/comp/fleet/status/impl"
 	haagentfx "github.com/DataDog/datadog-agent/comp/haagent/fx"
 	snmpscanfx "github.com/DataDog/datadog-agent/comp/snmpscan/fx"
 	"github.com/DataDog/datadog-agent/pkg/aggregator"
@@ -419,7 +419,7 @@ func getSharedFxOption() fx.Option {
 		rcserviceimpl.Module(),
 		rcservicemrfimpl.Module(),
 		remoteconfig.Bundle(),
-		statusimpl1.Module(),
+		fleetstatusimpl.Module(),
 		dualTaggerfx.Module(common.DualTaggerParams()),
 		autodiscoveryimpl.Module(),
 		// InitSharedContainerProvider must be called before the application starts so the workloadmeta collector can be initiailized correctly.

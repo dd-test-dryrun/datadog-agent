@@ -674,6 +674,12 @@ Package datadogclient provides a client to query the datadog API
 
 Package etw provides an ETW tracing interface
 
+### [comp/fleet/status](https://pkg.go.dev/github.com/DataDog/datadog-agent/comp/fleet/status)
+
+*Datadog Team*: fleet
+
+Package status implements the core status component information provider interface
+
 ### [comp/haagent](https://pkg.go.dev/github.com/DataDog/datadog-agent/comp/haagent)
 
 *Datadog Team*: ndm-core
