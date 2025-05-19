@@ -321,9 +321,9 @@ type JobTags struct {
 func fetchDatabricksCustomTags(s *common.Setup) {
 	// Check if required environment variables are set
 	token := os.Getenv("DATABRICKS_TOKEN")
-	host := os.Getenv("DATABRICKS_HOST")
+	host := os.Getenv("DATABRICKS_HOSTNAME")
 	if token == "" || host == "" {
-		log.Debug("DATABRICKS_TOKEN or DATABRICKS_HOST not set, skipping custom tags fetch")
+		log.Debug("DATABRICKS_TOKEN or DATABRICKS_HOSTNAME not set, skipping custom tags fetch")
 		return
 	}
 
