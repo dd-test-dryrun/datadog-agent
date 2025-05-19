@@ -317,84 +317,67 @@ type JobTags struct {
 	} `json:"settings"`
 }
 
-// fetchDatabricksCustomTags fetches custom tags from Databricks API and adds them to Datadog YAML config
 func fetchDatabricksCustomTags(s *common.Setup) {
-	// Check if required environment variables are set
 	token := os.Getenv("DATABRICKS_TOKEN")
-	host := os.Getenv("DATABRICKS_HOSTNAME")
+	host := os.Getenv("DATABRICKS_HOST")
 	if token == "" || host == "" {
-		log.Debug("DATABRICKS_TOKEN or DATABRICKS_HOSTNAME not set, skipping custom tags fetch")
+		log.Debug("DATABRICKS_TOKEN or DATABRICKS_HOST not set, skipping custom tags fetch")
 		return
 	}
 
 	s.Out.WriteString("Fetching custom tags from Databricks API\n")
 
-	// Create HTTP client with timeout
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}
 
-	// Get cluster ID from environment
 	clusterID := os.Getenv("DB_CLUSTER_ID")
 	if clusterID != "" {
-		// Fetch cluster tags
 		clusterTags, err := fetchClusterTags(client, host, token, clusterID)
 		if err != nil {
 			log.Warnf("Failed to fetch cluster tags: %v", err)
 			s.Out.WriteString(fmt.Sprintf("Failed to fetch cluster tags: %v\n", err))
 		} else {
-			// Add cluster tags to Datadog YAML
-			addTagsToConfig(s, clusterTags, "cluster_tag")
+			addTagsToConfig(s, clusterTags)
 		}
 	}
 
-	// Get job ID from environment or from cluster name
 	jobID, _, ok := getJobAndRunIDs()
 	if ok && jobID != "" {
-		// Fetch job tags
 		jobTags, err := fetchJobTags(client, host, token, jobID)
 		if err != nil {
 			log.Warnf("Failed to fetch job tags: %v", err)
 			s.Out.WriteString(fmt.Sprintf("Failed to fetch job tags: %v\n", err))
 		} else {
-			// Add job tags to Datadog YAML
-			addTagsToConfig(s, jobTags, "job_tag")
+			addTagsToConfig(s, jobTags)
 		}
 	}
 }
 
-// fetchClusterTags fetches custom tags for a cluster from Databricks API
 func fetchClusterTags(client *http.Client, host, token, clusterID string) (map[string]string, error) {
-	// Construct API URL for cluster tags
 	url := fmt.Sprintf("%s/api/2.0/clusters/get", host)
 
-	// Create request body
 	reqBody := fmt.Sprintf(`{"cluster_id": "%s"}`, clusterID)
 
-	// Create request
 	req, err := http.NewRequest("POST", url, strings.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set headers
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 
-	// Send request
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Check response status
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse response
 	var clusterResponse ClusterTags
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -409,35 +392,28 @@ func fetchClusterTags(client *http.Client, host, token, clusterID string) (map[s
 	return clusterResponse.CustomTags, nil
 }
 
-// fetchJobTags fetches custom tags for a job from Databricks API
 func fetchJobTags(client *http.Client, host, token, jobID string) (map[string]string, error) {
-	// Construct API URL for job tags with job_id as query parameter
 	url := fmt.Sprintf("%s/api/2.1/jobs/get?job_id=%s", host, jobID)
 
-	// Create request
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set headers
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 
-	// Send request
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Check response status
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse response
 	var jobResponse JobTags
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -452,24 +428,18 @@ func fetchJobTags(client *http.Client, host, token, jobID string) (map[string]st
 	return jobResponse.Settings.Tags, nil
 }
 
-// addTagsToConfig adds tags from a map to the Datadog YAML config
-func addTagsToConfig(s *common.Setup, tags map[string]string, prefix string) {
+func addTagsToConfig(s *common.Setup, tags map[string]string) {
 	if len(tags) == 0 {
 		return
 	}
 
-	s.Out.WriteString(fmt.Sprintf("Adding %d %s(s) to Datadog config\n", len(tags), prefix))
-
 	for key, value := range tags {
-		// Sanitize key and value
 		sanitizedKey := strings.ReplaceAll(key, ":", "_")
 		sanitizedValue := strings.ReplaceAll(value, ":", "_")
 
-		// Add tag to Datadog YAML
-		tagString := fmt.Sprintf("%s_%s:%s", prefix, sanitizedKey, sanitizedValue)
+		tagString := fmt.Sprintf("%s:%s", sanitizedKey, sanitizedValue)
 		s.Config.DatadogYAML.Tags = append(s.Config.DatadogYAML.Tags, tagString)
 
-		// Set span tag for observability
-		s.Span.SetTag(fmt.Sprintf("host_tag_set.%s_%s", prefix, sanitizedKey), "true")
+		s.Span.SetTag(fmt.Sprintf("host_tag_set.%s", sanitizedKey), "true")
 	}
 }
