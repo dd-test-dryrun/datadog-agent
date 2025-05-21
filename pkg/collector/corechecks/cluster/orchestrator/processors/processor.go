@@ -102,6 +102,7 @@ type K8sProcessorContext struct {
 	ResourceType      string
 	LabelsAsTags      map[string]string
 	AnnotationsAsTags map[string]string
+	NodeName          string
 }
 
 // ECSProcessorContext holds ECS resource processing attributes
@@ -158,6 +159,8 @@ type Handlers interface {
 
 	// ResourceTaggerTags returns the resource tags.
 	ResourceTaggerTags(ctx ProcessorContext, resource interface{}) []string
+
+	GetNodeName(ctx ProcessorContext, resource interface{}) string
 
 	// ScrubBeforeExtraction replaces sensitive information in the resource
 	// before resource extraction.
@@ -267,6 +270,9 @@ func (p *Processor) Process(ctx ProcessorContext, list interface{}) (processResu
 			ContentType:     "json",
 			Tags:            p.h.ResourceTaggerTags(ctx, resource),
 			IsTerminated:    ctx.IsTerminatedResources(),
+			Kind:            ctx.GetKind(),
+			ApiVersion:      ctx.GetAPIVersion(),
+			NodeName:        p.h.GetNodeName(ctx, resource),
 		})
 	}
 
