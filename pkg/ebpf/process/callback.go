@@ -172,9 +172,14 @@ func (c *callbackMap) QueryUserContext(whereClause string, args ...interface{}) 
 		FROM process_context
 		WHERE %s
 	`, whereClause)
-
+	// Build the query with the provided WHERE clause
+	queryraw := fmt.Sprintf(`
+	SELECT pid, user_id, user_name, context, timestamp
+	FROM process_context
+	WHERE %s
+`, whereClause)
 	// Execute the query with the provided arguments
-	rows, err := c.db.Query(query, args...)
+	rows, err := c.db.Query(queryraw, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query user context: %w", err)
 	}
