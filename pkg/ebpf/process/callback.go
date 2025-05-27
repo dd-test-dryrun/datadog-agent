@@ -161,25 +161,30 @@ func (c *callbackMap) call(pid uint32) {
 }
 
 // QueryUserContext retrieves user context information based on a WHERE clause
+// SECURITY WARNING: The whereClause parameter is directly interpolated into the SQL query.
+// To prevent SQL injection:
+// 1. Use parameterized values with '?' placeholders in the whereClause
+// 2. Pass the actual values through the args parameter
+// Example safe usage:
+//
+//	QueryUserContext("user_name = ? AND timestamp > ?", "john", 1234567890)
+//
+// DO NOT pass user-supplied strings directly as the whereClause!
 func (c *callbackMap) QueryUserContext(whereClause string, args ...interface{}) ([]ProcessUserContext, error) {
 	if c.db == nil {
 		return nil, fmt.Errorf("database not initialized")
 	}
 
 	// Build the query with the provided WHERE clause
-	query := fmt.Sprintf(`
+	// NOTE: SQL Injection risk if whereClause contains user input
+	queryStr := fmt.Sprintf(`
 		SELECT pid, user_id, user_name, context, timestamp
 		FROM process_context
 		WHERE %s
 	`, whereClause)
-	// Build the query with the provided WHERE clause
-	queryraw := fmt.Sprintf(`
-	SELECT pid, user_id, user_name, context, timestamp
-	FROM process_context
-	WHERE %s
-`, whereClause)
+
 	// Execute the query with the provided arguments
-	rows, err := c.db.Query(queryraw, args...)
+	rows, err := c.db.Query(queryStr, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query user context: %w", err)
 	}
@@ -202,13 +207,18 @@ func (c *callbackMap) QueryUserContext(whereClause string, args ...interface{}) 
 	return results, nil
 }
 
-// QueryUserContextUnsafe allows direct SQL queries for process context (USE WITH CAUTION)
+// QueryUserContextUnsafe allows direct SQL queries for process context
+// SECURITY WARNING: This function is vulnerable to SQL injection attacks.
+// It should ONLY be used with trusted, hardcoded queries.
+// NEVER pass user input directly to this function.
+// For user input, use QueryUserContext with parameterized queries instead.
 func (c *callbackMap) QueryUserContextUnsafe(query string) ([]ProcessUserContext, error) {
 	if c.db == nil {
 		return nil, fmt.Errorf("database not initialized")
 	}
 
 	// Execute the raw query
+	// NOTE: Direct SQL injection vulnerability - use only with trusted input
 	rows, err := c.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
@@ -230,4 +240,26 @@ func (c *callbackMap) QueryUserContextUnsafe(query string) ([]ProcessUserContext
 	}
 
 	return results, nil
+}
+
+// SafeQueryExamples provides examples of safe query patterns
+// This is a documentation function and should not be called
+func SafeQueryExamples() {
+	/*
+		// SAFE: Using parameterized queries
+		QueryUserContext("user_name = ?", "john")
+		QueryUserContext("timestamp > ? AND user_id = ?", 1234567890, "1000")
+
+		// UNSAFE: DO NOT DO THIS
+		username := getUserInput()
+		QueryUserContext("user_name = '" + username + "'")  // SQL Injection vulnerability!
+
+		// UNSAFE: DO NOT DO THIS
+		whereClause := getUserInput()
+		QueryUserContext(whereClause)  // SQL Injection vulnerability!
+
+		// SAFE: Using predefined WHERE clauses with parameterized values
+		const WHERE_CLAUSE_USER_TIMESTAMP = "user_name = ? AND timestamp > ?"
+		QueryUserContext(WHERE_CLAUSE_USER_TIMESTAMP, username, timestamp)
+	*/
 }
